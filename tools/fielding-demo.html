@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>守備ビュー デモ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/fielding.css">
+<link rel="stylesheet" href="../css/subs.css">
+<style>
+  html,body{overflow:auto;height:auto}
+  body{background:#0B1428;color:#fff;padding:8px 10px}
+  .bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px;font-weight:800;font-size:14px}
+  .bar button{height:34px;padding:0 12px;border-radius:9px;border:3px solid #1C2B4B;background:#FFD54A;color:#1C2B4B;font-weight:900}
+  .bar button.alt{background:#fff}
+  .bar label{display:flex;align-items:center;gap:4px;margin-left:6px}
+  #stage{transform:none;flex:none}
+  #log{margin-top:8px;font:12px/1.4 monospace;white-space:pre-wrap;color:#B8C4DB;max-width:1280px}
+  .idle{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;color:#FFD54A;background:repeating-linear-gradient(115deg,#1C2B4B 0 60px,#22345A 60px 120px)}
+</style>
+</head>
+<body>
+<div class="bar">
+  <span>打球:</span>
+  <button data-preset="grounder">ショートゴロ</button>
+  <button data-preset="grounder2">一二塁間ゴロ</button>
+  <button data-preset="fly">センター深いフライ</button>
+  <button data-preset="liner">右中間ライナー</button>
+  <button data-preset="popup">ポップフライ</button>
+  <button data-preset="hr">ホームラン</button>
+  <label><input type="checkbox" id="user" checked> ユーザー操作</label>
+  <label>走者 <select id="runners"><option value="0">なし</option><option value="1">1塁</option><option value="13">1・3塁</option><option value="123">満塁</option></select></label>
+  <span style="margin-left:12px">交代:</span>
+  <button class="alt" data-subs="batting">攻撃メニュー</button>
+  <button class="alt" data-subs="fielding">守備メニュー</button>
+</div>
+<div id="stage"><div class="idle">ボタンで打球を選んでください</div></div>
+<pre id="log"></pre>
+<script type="module">
+import { createFieldingView } from '../js/fielding.js';
+import { openSubsMenu } from '../js/subs.js';
+import { TEAMS } from '../js/data.js';
+
+const stage = document.getElementById('stage');
+const logEl = document.getElementById('log');
+const log = (...a) => { logEl.textContent = a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ') + '\n' + logEl.textContent; };
+
+// ---------- モック state ----------
+const clone = (o) => JSON.parse(JSON.stringify(o));
+function mockState() {
+  const away = clone(TEAMS[0]);
+  const home = clone(TEAMS[1]);
+  for (const t of [away, home]) {
+    t.players.forEach((p) => { if (!p.positions) p.positions = p.pos === '投' ? ['投'] : [p.pos, ...(p.pos === '遊' ? ['二', '三'] : p.pos === '二' ? ['遊'] : ['左', '中', '右'].includes(p.pos) ? ['左', '中', '右'] : [])]; });
+    t.posOf = {};
+    t.lineup.forEach((id) => { t.posOf[id] = t.players.find((p) => p.id === id).pos; });
+    t.used = [];
+  }
+  const st = { inning: 3, half: 'top', outs: 1, balls: 0, strikes: 0, bases: [true, false, true], teams: { away, home }, userSide: 'away',
+    batterIndex: { away: 2, home: 0 }, stamina: {}, runnersIds: ['r1', null, 'r2'] };
+  for (const t of [away, home]) t.players.forEach((p) => { if (p.pitching) st.stamina[p.id] = Math.round(p.pitching.stamina * (p.id === t.lineup[8] ? 0.35 : 1)); });
+  return st;
+}
+const P = (s, side, id) => s.teams[side].players.find((p) => p.id === id);
+const mockEngine = {
+  lineupView(s, side) {
+    const t = s.teams[side];
+    return t.lineup.map((id, i) => { const p = P(s, side, id); return { slot: i + 1, id, name: p.name, pos: t.posOf[id], isPitcher: t.posOf[id] === '投' }; });
+  },
+  availableBench(s, side) { const t = s.teams[side]; return t.players.filter((p) => !t.lineup.includes(p.id) && !t.used.includes(p.id) && p.pos !== '投'); },
+  availablePitchers(s, side) { const t = s.teams[side]; return t.players.filter((p) => p.pitching && !t.lineup.includes(p.id) && !t.used.includes(p.id)); },
+  getBatter(s) { const t = s.teams.away; return P(s, 'away', t.lineup[s.batterIndex.away % 9]); },
+  getPitcher(s) { const t = s.teams.away; return P(s, 'away', t.lineup.find((id) => t.posOf[id] === '投')); },
+  summary(s) { return { runners: s.runnersIds.map((id) => (id ? { id, name: P(s, 'away', id).name, speed: P(s, 'away', id).speed } : null)) }; },
+  pinchHit(s0, side, id) { const s = clone(s0); const t = s.teams[side]; const i = s.batterIndex[side] % 9; const old = t.lineup[i]; t.used.push(old); t.posOf[id] = t.posOf[old]; t.lineup[i] = id; return s; },
+  pinchRun(s0, side, base, id) { const s = clone(s0); const t = s.teams[side]; const old = s.runnersIds[base]; if (!old) throw new Error('その塁に走者はいません'); const i = t.lineup.indexOf(old); t.used.push(old); t.posOf[id] = t.posOf[old]; t.lineup[i] = id; s.runnersIds[base] = id; return s; },
+  changePitcher(s0, side, id) { const s = clone(s0); const t = s.teams[side]; const i = t.lineup.findIndex((x) => t.posOf[x] === '投'); t.used.push(t.lineup[i]); t.lineup[i] = id; t.posOf[id] = '投'; return s; },
+  defensiveSwap(s0, side, changes) {
+    const s = clone(s0); const t = s.teams[side];
+    for (const c of changes) {
+      const p = P(s, side, c.playerId);
+      if (c.pos === '投' && !p.pitching) throw new Error(`${p.name}は投手ができません`);
+      if (t.posOf[c.playerId] === '投' && c.pos !== '投') throw new Error('投手の守備位置変更は投手交代で行ってください');
+      if (c.pos === '捕' && !(p.positions || []).includes('捕')) throw new Error(`${p.name}は捕手を守れません`);
+      if (!t.lineup.includes(c.playerId)) { const old = t.lineup.find((x) => t.posOf[x] === c.pos); t.lineup[t.lineup.indexOf(old)] = c.playerId; t.used.push(old); }
+      t.posOf[c.playerId] = c.pos;
+    }
+    return s;
+  },
+};
+let subsState = mockState();
+
+// ---------- モック打球 ----------
+function flyPath(L, T, z0 = 1) {
+  const vz = (4.9 * T * T - z0) / T;
+  const out = [];
+  for (let t = 0; t <= T + 1e-6; t += 0.05) { const k = t / T; out.push({ t: +t.toFixed(2), x: L.x * k, y: L.y * k, z: Math.max(0, z0 + vz * t - 4.9 * t * t) }); }
+  out[out.length - 1].z = 0;
+  return out;
+}
+function groundPath(dirX, dirY, v0) {
+  const d = Math.hypot(dirX, dirY), ux = dirX / d, uy = dirY / d;
+  const out = []; let x = 0, y = 0, v = v0, t = 0, hop = 0.9, ht = 0;
+  while (v > 0.3 && t < 8) {
+    const dur = Math.sqrt(8 * hop / 9.8);
+    const z = hop > 0.05 ? hop * 4 * (ht / dur) * (1 - ht / dur) : 0;
+    out.push({ t: +t.toFixed(2), x, y, z });
+    t += 0.05; ht += 0.05; if (ht >= dur) { ht = 0; hop *= 0.4; }
+    v = Math.max(0, v - (v > 18 ? 3 : 6) * 0.05); x += ux * v * 0.05; y += uy * v * 0.05;
+  }
+  return out;
+}
+function makeBall(kind) {
+  let b;
+  switch (kind) {
+    case 'grounder': b = { type: 'grounder', path: groundPath(-11, 30, 30), exitSpeed: 30 }; break;
+    case 'grounder2': b = { type: 'grounder', path: groundPath(12.5, 30, 31), exitSpeed: 31 }; break;
+    case 'fly': b = { type: 'fly', path: flyPath({ x: 4, y: 104 }, 4.9), exitSpeed: 40 }; break;
+    case 'liner': b = { type: 'liner', path: flyPath({ x: 36, y: 78 }, 2.0), exitSpeed: 44 }; break;
+    case 'popup': b = { type: 'popup', path: flyPath({ x: 7, y: 21 }, 5.4), exitSpeed: 25 }; break;
+    case 'hr': b = { type: 'hr', isHomeRun: true, path: flyPath({ x: -52, y: 116 }, 5.2), exitSpeed: 48 }; break;
+  }
+  const last = b.path[b.path.length - 1];
+  return { id: Date.now(), dirDeg: Math.atan2(last.x, last.y) * 180 / Math.PI, landing: { x: last.x, y: last.y }, hangTime: last.t, isHomeRun: !!b.isHomeRun, batterId: 'b3', ...b };
+}
+
+// ---------- 起動 ----------
+let view = null;
+let menu = null;
+window.__fv = { results: [] };
+function launch(kind) {
+  if (menu) { menu.close(); menu = null; }
+  if (view) { view.destroy(); view = null; }
+  const team = TEAMS[0];
+  const fielders = team.lineup.map((id) => team.players.find((p) => p.id === id)).map((p) => ({ id: p.id, name: p.name, pos: p.pos, speed: p.speed, fielding: p.fielding, arm: p.arm, catching: p.catching, color: team.color }));
+  const rsel = document.getElementById('runners').value;
+  const opp = TEAMS[1].players.filter((p) => !p.pitching);
+  const runners = [0, 1, 2].map((i) => (rsel.includes(String(i + 1)) ? { id: opp[i].id, name: opp[i].name, speed: opp[i].speed } : null));
+  const ball = makeBall(kind);
+  window.__fv.ball = ball;
+  view = createFieldingView(stage, {
+    state: { outs: 1 }, ball, side: 'away', userControlled: document.getElementById('user').checked,
+    fielders, runners, batterSpeed: 70, runnerColor: TEAMS[1].color,
+    sound: { play: (n) => { window.__fv.lastSound = n; } },
+    onDone: (res) => { window.__fv.results.push(res); log('onDone', kind, res); },
+  });
+  view.start();
+}
+document.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => { b.blur(); launch(b.dataset.preset); }));
+document.querySelectorAll('[data-subs]').forEach((b) => b.addEventListener('click', () => {
+  b.blur();
+  if (view) { view.destroy(); view = null; }
+  if (menu) menu.close();
+  menu = openSubsMenu(stage, { state: subsState, side: 'away', engine: mockEngine, mode: b.dataset.subs,
+    onApply: (s, text) => { subsState = s; log('onApply', text); },
+    onClose: (info) => { log('onClose', info); menu = null; } });
+}));
+window.__launch = launch;
+window.__view = () => view;
+
+const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', z: 'z', Z: 'z', x: 'x', X: 'x', Enter: 'enter', Escape: 'esc' };
+addEventListener('keydown', (e) => {
+  const k = KEYS[e.key]; if (!k) return;
+  e.preventDefault();
+  if (menu) { menu.handleKey(k); return; }
+  if (view) view.handleKey(k, true);
+});
+addEventListener('keyup', (e) => {
+  const k = KEYS[e.key]; if (!k) return;
+  if (!menu && view) view.handleKey(k, false);
+});
+</script>
+</body>
+</html>

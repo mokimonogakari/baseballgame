@@ -1,0 +1,99 @@
+/* =========================================================
+   守備ビュー（js/fielding.js）  プレフィックス .fv-
+   ========================================================= */
+.fv{position:absolute;inset:0;z-index:40;overflow:hidden;color:#fff;font-family:var(--font,'M PLUS Rounded 1c',sans-serif);background:#22365F;user-select:none;-webkit-user-select:none}
+.fv>*{position:absolute}
+.fv-crowd{inset:0;background:
+  radial-gradient(circle at 3px 3px,#FFD54A 2px,transparent 2.6px) 0 0/15px 10px,
+  radial-gradient(circle at 3px 3px,#FF8FA8 2px,transparent 2.6px) 7px 5px/15px 10px,
+  radial-gradient(circle at 3px 3px,#FFFFFF 1.8px,transparent 2.4px) 4px 2px/21px 10px,
+  radial-gradient(circle at 3px 3px,#8FD3FF 1.8px,transparent 2.4px) 12px 7px/25px 10px,
+  radial-gradient(circle at 3px 3px,#E5484D 1.8px,transparent 2.4px) 18px 3px/29px 10px,
+  repeating-linear-gradient(180deg,transparent 0 26px,#14203C 26px 30px),
+  linear-gradient(180deg,#1A2B4E 0%,#2B4577 45%,#34528A 100%)}
+.fv-crowd::before{content:"";position:absolute;left:0;right:0;top:0;height:40px;background:linear-gradient(180deg,#5AA8F2,#9AD0FF);box-shadow:0 4px 0 #16233F}
+.fv-field{left:0;top:0;width:1280px;height:720px;pointer-events:none}
+.fv-layer{inset:0;pointer-events:none}
+.fv-layer>*{position:absolute;left:0;top:0}
+
+/* ---- 選手トークン（ミニちびキャラ） ---- */
+.fv-tok{--team:#1E88E5;width:30px;height:40px;margin:-40px 0 0 -15px;transform-origin:15px 40px;will-change:transform}
+.fv-tok-ring{position:absolute;left:-5px;bottom:-6px;width:40px;height:13px;border-radius:50%;background:rgba(0,0,0,.22)}
+.fv-tok-fig{position:absolute;left:0;top:0;width:30px;height:40px;transform-origin:15px 36px;transition:transform .12s}
+.fv-tok-head{position:absolute;left:4px;top:3px;width:22px;height:20px;background:#FFE8D1;border:2px solid #1C2B4B;border-radius:52% 52% 46% 46%;z-index:2;box-sizing:border-box}
+.fv-tok-cap{position:absolute;left:-3px;right:-3px;top:-5px;height:11px;background:var(--team);border:2px solid #1C2B4B;border-radius:12px 12px 3px 3px}
+.fv-tok-eye{position:absolute;top:9px;width:3px;height:5px;background:#1C2B4B;border-radius:50%}
+.fv-tok-eye.l{left:5px}.fv-tok-eye.r{right:5px}
+.fv-tok-body{position:absolute;left:7px;top:21px;width:16px;height:11px;background:#fff;border:2px solid #1C2B4B;border-radius:6px 6px 3px 3px;box-sizing:border-box;box-shadow:inset 0 -3px 0 var(--team)}
+.fv-tok-legs{position:absolute;left:9px;top:31px;width:12px;height:7px;display:flex;justify-content:space-between}
+.fv-tok-legs>i{display:block;width:5px;height:7px;background:#1C2B4B;border-radius:2px 2px 3px 3px}
+.fv-tok-label{position:absolute;left:50%;top:41px;transform:translateX(-50%);min-width:18px;height:16px;padding:0 3px;border-radius:8px;background:rgba(28,43,75,.88);border:1.5px solid #fff;color:#fff;font-size:11px;font-weight:900;line-height:13px;text-align:center;white-space:nowrap;box-sizing:border-box}
+.fv-tok-arrow{position:absolute;left:7px;top:-22px;width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-top:12px solid #FFD54A;filter:drop-shadow(0 2px 0 #1C2B4B);display:none}
+.fv-run .fv-tok-legs>i:first-child{animation:fv-leg .22s linear infinite alternate}
+.fv-run .fv-tok-legs>i:last-child{animation:fv-leg .22s linear infinite alternate-reverse}
+.fv-run .fv-tok-fig{animation:fv-bob .22s ease-in-out infinite alternate}
+@keyframes fv-leg{from{transform:translateY(-2px)}to{transform:translateY(1px)}}
+@keyframes fv-bob{from{margin-top:0}to{margin-top:-2px}}
+.fv-sel .fv-tok-ring{background:rgba(255,213,74,.35);border:3px solid #FFD54A;box-shadow:0 0 0 2px #1C2B4B;left:-8px;width:46px;height:17px;bottom:-8px}
+.fv-sel .fv-tok-arrow{display:block;animation:fv-arrow .5s ease-in-out infinite alternate}
+.fv-sel .fv-tok-label{background:#FFD54A;color:#1C2B4B;border-color:#1C2B4B}
+@keyframes fv-arrow{from{transform:translateY(-3px)}to{transform:translateY(3px)}}
+.fv-dive .fv-tok-fig{transform:rotate(72deg) translate(4px,6px)}
+.fv-dive-l .fv-tok-fig{transform:rotate(-72deg) translate(-4px,6px)}
+.fv-down .fv-tok-fig{opacity:.85}
+.fv-runner .fv-tok-cap{border-radius:12px 12px 6px 6px;height:13px;top:-5px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.18)}
+.fv-runner .fv-tok-body{background:#F3F6FB}
+.fv-runner .fv-tok-label{background:#E5484D;border-color:#fff}
+.fv-runner{transition:opacity .4s}
+
+/* ---- ボール ---- */
+.fv-ball{width:13px;height:13px;margin:-6.5px 0 0 -6.5px;background:#fff;border:2.5px solid #1C2B4B;border-radius:50%;box-sizing:border-box;will-change:transform}
+.fv-shadow{width:22px;height:9px;margin:-4.5px 0 0 -11px;background:rgba(10,20,40,.55);border-radius:50%}
+.fv-landmark{width:46px;height:18px;margin:-9px 0 0 -23px;border:3px dashed #FFD54A;border-radius:50%;background:rgba(255,213,74,.18);box-sizing:border-box;animation:fv-pulse .6s ease-in-out infinite alternate}
+.fv-landmark::after{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:#FFD54A}
+@keyframes fv-pulse{from{opacity:.55}to{opacity:1}}
+
+/* ---- 送球先マーカー ---- */
+.fv-basemark{width:0;height:0;z-index:1500;pointer-events:none;opacity:0;transition:opacity .12s}
+.fv-basemark.show{opacity:1}
+.fv-basemark span{position:absolute;left:0;bottom:12px;transform:translateX(-50%);display:flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:14px;background:rgba(28,43,75,.9);border:2px solid #fff;font-size:14px;font-weight:900;white-space:nowrap}
+.fv-basemark span b{color:#FFD54A;font-size:16px}
+.fv-basemark span::after{content:"";position:absolute;left:50%;top:100%;margin-left:-6px;border:6px solid transparent;border-top-color:#fff}
+.fv-basemark.on span{background:#FFD54A;color:#1C2B4B;border-color:#1C2B4B;transform:translateX(-50%) scale(1.15)}
+.fv-basemark.on span b{color:#E5484D}
+.fv-basemark.on span::after{border-top-color:#1C2B4B}
+.fv-basemark[data-base="4"] span{bottom:auto;top:-30px;left:auto;right:30px;transform:none}
+.fv-basemark[data-base="4"].on span{transform:scale(1.15);transform-origin:right center}
+.fv-basemark[data-base="4"] span::after{left:100%;top:50%;margin:-6px 0 0 0;border-top-color:transparent;border-left-color:#fff}
+.fv-basemark[data-base="4"].on span::after{border-top-color:transparent;border-left-color:#1C2B4B}
+
+/* ---- HUD ---- */
+.fv-hud{left:16px;top:52px;display:flex;align-items:center;gap:8px;height:40px;padding:0 14px 0 8px;background:rgba(28,43,75,.92);border:3px solid #FFD54A;border-radius:12px;font-weight:900;z-index:3000}
+.fv-chip{background:#FFD54A;color:#1C2B4B;border-radius:8px;padding:2px 10px;font-size:15px}
+.fv-type{font-size:19px}
+.fv-who{font-size:15px;color:#B8C4DB}
+.fv-who:empty{display:none}
+.fv-prompt{left:50%;bottom:16px;transform:translateX(-50%);height:46px;padding:0 20px;display:flex;align-items:center;background:rgba(28,43,75,.92);border:3px solid #FFD54A;border-radius:12px;font-size:18px;font-weight:900;white-space:nowrap;z-index:3000}
+.fv-callout{left:0;right:0;top:210px;text-align:center;font-size:72px;font-weight:900;color:#FFD54A;text-shadow:5px 5px 0 #1C2B4B,-2px -2px 0 #1C2B4B,2px -2px 0 #1C2B4B,-2px 2px 0 #1C2B4B;opacity:0;pointer-events:none;z-index:3100;transform:scale(.8);transition:opacity .15s,transform .15s}
+.fv-callout.show{opacity:1;transform:scale(1)}
+.fv-callout.bad{color:#fff;text-shadow:5px 5px 0 #E5484D,-2px -2px 0 #1C2B4B,2px -2px 0 #1C2B4B,-2px 2px 0 #1C2B4B}
+.fv-callout.hr{font-size:96px}
+
+/* ---- タッチ操作 ---- */
+.fv-dpad{left:20px;bottom:20px;width:168px;height:168px;z-index:3000}
+.fv-dpad-btn{position:absolute;width:54px;height:54px;border-radius:50%;background:#fff;border:4px solid #1C2B4B;color:#1C2B4B;font-weight:900;font-size:20px;padding:0;box-shadow:0 4px 0 #1C2B4B;touch-action:none;font-family:inherit;cursor:pointer}
+.fv-dpad-btn:active{transform:translateY(3px);box-shadow:0 1px 0 #1C2B4B}
+.fv-dpad-btn.up{left:57px;top:0}.fv-dpad-btn.down{left:57px;bottom:4px}.fv-dpad-btn.left{left:0;top:57px}.fv-dpad-btn.right{right:0;top:57px}
+.fv-actions{right:20px;bottom:20px;display:flex;gap:14px;align-items:flex-end;z-index:3000}
+.fv-btn-z,.fv-btn-x{width:96px;height:96px;border-radius:50%;border:5px solid #1C2B4B;box-shadow:0 6px 0 #1C2B4B;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#1C2B4B;padding:0;touch-action:none;font-family:inherit;cursor:pointer}
+.fv-btn-z{background:#FFD54A}
+.fv-btn-x{background:#E5484D;color:#fff;margin-bottom:28px}
+.fv-btn-z b,.fv-btn-x b{font-size:24px;font-weight:900;line-height:1}
+.fv-btn-z small,.fv-btn-x small{font-size:13px;font-weight:800}
+.fv-btn-z:active,.fv-btn-x:active{transform:translateY(4px);box-shadow:0 2px 0 #1C2B4B}
+.fv-skip{right:20px;bottom:20px;height:48px;padding:0 20px;border-radius:14px;border:4px solid #1C2B4B;background:#FFD54A;color:#1C2B4B;font-family:inherit;font-size:17px;font-weight:900;box-shadow:0 4px 0 #1C2B4B;z-index:3000;cursor:pointer}
+
+@media (prefers-reduced-motion:reduce){
+  .fv *,.fv *::before,.fv *::after{animation:none!important;transition:none!important}
+}
+.fv-rm .fv-tok-arrow,.fv-rm .fv-landmark{animation:none}

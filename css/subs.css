@@ -1,0 +1,75 @@
+/* =========================================================
+   選手交代メニュー（js/subs.js）  プレフィックス .sb-
+   ========================================================= */
+.sb{position:absolute;inset:0;z-index:60;font-family:var(--font,'M PLUS Rounded 1c',sans-serif);color:#fff}
+.sb-backdrop{position:absolute;inset:0;background:rgba(8,14,30,.62)}
+.sb-panel{position:absolute;left:130px;top:44px;width:1020px;height:632px;background:#1C2B4B;border:4px solid #FFD54A;border-radius:22px;box-shadow:0 8px 0 rgba(8,14,30,.6);display:flex;flex-direction:column;overflow:hidden}
+.sb-head{display:flex;align-items:center;gap:14px;height:76px;padding:0 18px 0 24px;background:#16233F;border-bottom:4px solid #FFD54A;flex:none}
+.sb-head h2{margin:0 8px 0 0;font-size:28px;font-weight:900;color:#FFD54A;letter-spacing:2px;white-space:nowrap}
+.sb-tabs{display:flex;gap:10px;flex:1}
+.sb-tab{height:50px;min-width:150px;padding:0 22px;border-radius:12px;border:3px solid #34476E;background:#34476E;color:#fff;font-size:21px;font-weight:900;font-family:inherit;cursor:pointer}
+.sb-tab.active{background:#FFD54A;border-color:#FFD54A;color:#1C2B4B}
+.sb-close{height:46px;padding:0 16px;border-radius:12px;border:3px solid #fff;background:transparent;color:#fff;font-size:17px;font-weight:900;font-family:inherit;cursor:pointer}
+.sb-hint{flex:none;padding:12px 26px 4px;font-size:17px;font-weight:800;color:#B8C4DB}
+.sb-body{flex:1;min-height:0;overflow:auto;padding:6px 24px 8px;display:flex;flex-direction:column;gap:12px;scrollbar-width:thin}
+.sb-err{flex:none;min-height:0;margin:0 24px;font-size:17px;font-weight:900;color:#fff}
+.sb-err:not(:empty){padding:8px 14px;background:#E5484D;border-radius:10px;margin-bottom:6px}
+.sb-foot{flex:none;height:46px;display:flex;align-items:center;justify-content:center;gap:28px;background:#16233F;font-size:15px;font-weight:800;color:#B8C4DB}
+.sb-foot b{color:#FFD54A;margin-right:6px}
+
+/* 現在の選手 */
+.sb-current{display:flex;align-items:center;gap:12px;min-height:60px;padding:6px 16px;background:#34476E;border-radius:14px;flex:none}
+.sb-current>b{font-size:23px;font-weight:900;white-space:nowrap}
+.sb-current>small{font-size:14px;color:#B8C4DB;font-weight:800;white-space:nowrap}
+.sb-tag{background:#FFD54A;color:#1C2B4B;font-size:14px;font-weight:900;border-radius:8px;padding:3px 10px;white-space:nowrap}
+.sb-lbl{margin-left:auto;font-size:13px;color:#B8C4DB;font-weight:800}
+
+/* 行・カード */
+.sb-list{display:flex;flex-direction:column;gap:8px}
+.sb-item{display:flex;align-items:center;gap:12px;min-height:58px;width:100%;padding:6px 16px;border-radius:14px;border:3px solid transparent;background:#fff;color:#1C2B4B;font-family:inherit;font-weight:900;text-align:left;cursor:pointer;box-shadow:0 4px 0 #0E1830}
+.sb-item:hover{border-color:#B8C4DB}
+.sb-item.sb-focus{background:#FFF3C4;border-color:#FFD54A;box-shadow:0 0 0 3px #FFD54A,0 4px 0 #0E1830;transform:translateY(-1px)}
+.sb-item[disabled]{background:#D6DEEB;color:#5B6B8A;cursor:not-allowed;box-shadow:none}
+.sb-pos{flex:none;width:38px;height:38px;border-radius:10px;background:#1C2B4B;color:#fff;display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:900}
+.sb-base{flex:none;height:38px;padding:0 12px;border-radius:10px;background:#E5484D;color:#fff;display:flex;align-items:center;font-size:18px;font-weight:900}
+.sb-nm{flex:1;min-width:0;font-size:21px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:baseline;gap:8px}
+.sb-nm small{font-size:13px;color:#5B6B8A;font-weight:800}
+.sb-dim{color:#5B6B8A}
+.sb-ab{flex:none;display:inline-flex;align-items:center;gap:5px}
+.sb-ab small{font-size:12px;font-weight:800;color:#5B6B8A}
+.sb-ab b{width:34px;height:34px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-size:19px;font-weight:900;box-shadow:inset 0 -3px 0 rgba(0,0,0,.18)}
+.sb-ab i{font-style:normal;font-size:14px;font-weight:900;min-width:20px}
+.sb-current .sb-ab small{color:#B8C4DB}
+.sb-current .sb-ab i{color:#fff}
+.sb-big{flex:none;font-size:28px;font-weight:900;color:#E5484D;min-width:44px;text-align:right}
+.sb-velo{flex:none;display:inline-flex;align-items:baseline;gap:3px;background:#1C2B4B;color:#FFD54A;border-radius:10px;padding:2px 10px}
+.sb-velo b{font-size:22px}
+.sb-velo small{font-size:12px}
+.sb-stam{flex:none;width:180px;height:14px;background:#1C2B4B;border-radius:7px;overflow:hidden}
+.sb-stam>i{display:block;height:100%;background:linear-gradient(90deg,#43A047,#7BD36F);border-radius:7px}
+.sb-stam>i.low{background:linear-gradient(90deg,#E5484D,#FF8A65)}
+.sb-stam-num{font-size:15px;font-weight:900;min-width:60px}
+.sb-warn{flex:none;font-size:12px;font-weight:900;color:#fff;background:#F57C00;border-radius:6px;padding:2px 6px}
+.sb-empty{padding:26px;text-align:center;font-size:19px;font-weight:800;color:#B8C4DB;background:#34476E;border-radius:14px}
+.sb-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.sb-grid4{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.sb-card{min-height:76px;flex-wrap:wrap}
+.sb-card .sb-nm{font-size:19px}
+.sb-mini{min-height:52px;padding:4px 10px;gap:8px}
+.sb-mini .sb-pos{width:32px;height:32px;font-size:16px}
+.sb-mini .sb-nm{font-size:16px}
+.sb-split{display:grid;grid-template-columns:440px 1fr;gap:18px;align-items:start}
+.sb-sec{font-size:15px;font-weight:900;color:#FFD54A;margin:2px 0 8px}
+
+/* 確認ダイアログ */
+.sb-confirm{position:absolute;inset:0;background:rgba(8,14,30,.55);display:flex;align-items:center;justify-content:center}
+.sb-confirm-box{width:640px;background:#fff;color:#1C2B4B;border:4px solid #FFD54A;border-radius:18px;padding:22px 26px;box-shadow:0 6px 0 #0E1830;text-align:center}
+.sb-confirm-box p{margin:0 0 16px;font-size:22px;font-weight:900;line-height:1.5}
+.sb-confirm-btns{display:flex;justify-content:center;gap:18px}
+.sb-btn{width:200px;height:56px;border:4px solid #1C2B4B;border-radius:14px;background:#fff;color:#1C2B4B;font-family:inherit;font-size:21px;font-weight:900;box-shadow:0 4px 0 #1C2B4B;cursor:pointer}
+.sb-btn.primary{background:#FFD54A}
+.sb-btn.sb-focus{outline:4px solid #E5484D;outline-offset:3px}
+.sb-err.in{margin:0 0 14px;text-align:center}
+.sb-tab.sb-focus,.sb-close.sb-focus{outline:4px solid #fff;outline-offset:2px}
+
+@media (prefers-reduced-motion:reduce){.sb *{transition:none!important;animation:none!important}}
