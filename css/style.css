@@ -249,96 +249,61 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 
 
 /* ---------- 打者ちびキャラとスイング ----------
-   右打者の向き（本塁 = 画面右）で組み、左打者は .chibi-batter 自体を scaleX(-1)（JS のインライン transform）。
-   .bt-pivot = グリップ（手）の位置。.bt-swing はグリップを支点に 3D 回転:
-   rotateZ(傾き) rotateX(-22deg: スイング面の傾き) rotateY(θ: 180=後ろ/背中側, 360=ゾーンを横切る, 540=フォロースルー)。
-   待機中はバットを頭の後ろで約45°に立てる（寝かせない・ゾーンに掛からない）。 */
-.chibi-batter{left:396px;top:404px;transform:scale(.9);transform-origin:top left;z-index:2}
-.bt-rig{position:relative;display:flex;flex-direction:column;align-items:center;width:8em;animation:bt-bob 1.6s ease-in-out infinite}
+   捕手視点の 3/4 後ろ姿（背番号・後頭部が見え、顔は投手＝画面奥を向く）。右打者の向きで組み、
+   左打者は .chibi-batter 自体を scaleX(-1)（JS のインライン transform）。
+   各パーツ（data-bt）の構えの transform は JS がインラインで与え、スイングは game.js の
+   ポーズ（2 関節 IK・バットはグリップ支点の 3D 回転）から作った WAAPI キーフレームで動かす。
+   .bt-arm = 上腕（肩が回転中心）、.bt-fore = 前腕（肘が回転中心）。 */
+.chibi-batter{left:396px;top:404px;transform:scale(.9);transform-origin:top left;z-index:2;display:block;width:128px;height:176px}
+.bt-rig{position:absolute;left:0;top:0;width:128px;height:176px;animation:bt-bob 1.6s ease-in-out infinite}
 @keyframes bt-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(2.5px)}}
-/* 横向きの構え: 顔を少し本塁（投手）側へ */
-.chibi-batter .chibi-eye.l{left:1.75em}.chibi-batter .chibi-eye.r{right:.55em}
-.chibi-batter .chibi-cheek.l{left:1.1em}.chibi-batter .chibi-cheek.r{right:.05em}
-.chibi-batter .chibi-mouth{margin-left:.15em}
-.chibi-batter .chibi-legs{gap:.9em}
-.chibi-batter .chibi-legs>i{transform-origin:50% 0}
-/* 左打者は鏡像なので背番号だけ戻す */
+.chibi-batter.swing-meet .bt-rig,.chibi-batter.swing-power .bt-rig{animation:none}
+.bt-rig>div{position:absolute;left:0;top:0}
+.bt-rig i{position:absolute;display:block}
+
+/* 脚（白いパンツ + チームカラーのストッキング）と靴。前足（左足）は画面左、後ろ足は右 */
+.bt-leg{left:28px!important;top:128px!important;width:24px;height:34px;z-index:1;border:3px solid var(--navy);border-radius:9px 9px 5px 5px;background:linear-gradient(#fff 0 58%,var(--team) 58%);transform-origin:12px 2px}
+.bt-leg.bt-leg-b{left:74px!important;transform-origin:12px 34px}
+.bt-shoe{position:absolute;left:-4px;top:26px;width:31px;height:13px;background:var(--navy);border-radius:55% 60% 40% 40%;transform-origin:50% 100%}
+.bt-leg-b .bt-shoe{left:-2px;transform-origin:88% 100%}
+
+/* 胴（背中）。回転して胸が投手を向くほど背中が正面に見える（scaleX）。背番号は JS が入れる */
+.bt-torso{left:20px!important;top:70px!important;width:84px;height:64px;z-index:4;background:#fff;border:4px solid var(--navy);border-radius:24px 24px 12px 12px;transform-origin:42px 64px}
+.bt-numw{position:absolute;left:0;right:0;top:9px;text-align:center;font-weight:900;font-size:30px;line-height:1;color:var(--team);-webkit-text-stroke:1px var(--navy)}
 .bt-num{display:inline-block}
 .chibi-batter.lefty .bt-num{transform:scaleX(-1)}
+.bt-belt{left:-4px;right:-4px;bottom:-4px;height:11px;background:var(--navy);border-radius:0 0 10px 10px}
 
-.bt-pivot{position:absolute;left:30px;top:92px;width:0;height:0;z-index:1}
-.bt-swing{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0;transform:rotateZ(45deg) rotateX(-22deg) rotateY(180deg)}
-.bt-bat{position:absolute;left:-12px;top:-8px;width:152px;height:16px}
-.bt-bat>i{position:absolute;display:block;border:2.5px solid var(--navy)}
+/* 頭（後ろ姿）: ヘルメット・耳当て（投手側の耳）・後ろ髪・手前の耳 */
+.bt-head{left:20px!important;top:2px!important;width:88px;height:80px;z-index:5;transform-origin:44px 80px}
+.bt-neck{left:31px;top:64px;width:26px;height:18px;background:#FFE8D1;border:3px solid var(--navy);border-radius:6px}
+.bt-skull{left:0;top:0;width:88px;height:78px;background:#4A3426;border:4px solid var(--navy);border-radius:52% 52% 46% 46%}
+.bt-hair{left:20px;top:58px;width:48px;height:14px;background:#5C4130;border-radius:0 0 50% 50%}
+.bt-ear{left:78px;top:42px;width:15px;height:19px;background:#FFE8D1;border:3px solid var(--navy);border-radius:50%}
+.bt-helmet{left:-5px;top:-9px;width:98px;height:60px;background:var(--team);border:4px solid var(--navy);border-radius:50% 50% 16px 16px/62% 62% 16px 16px;box-shadow:inset -6px -5px 0 rgba(0,0,0,.14)}
+.bt-flap{left:-11px;top:26px;width:27px;height:30px;background:var(--team);border:4px solid var(--navy);border-radius:45% 30% 45% 60%;filter:brightness(.9)}
+.bt-logo{left:16px;top:-1px;width:24px;height:12px;background:rgba(255,255,255,.55);border-radius:50%;transform:rotate(-18deg)}
+
+/* 腕: 上腕（袖）+ 前腕。手はグリップに乗る別パーツ（上の手 = 後ろ腕, 下の手 = 前腕） */
+.bt-arm{width:16px;height:43px;margin:-4px 0 0 -8px;transform-origin:8px 4px;background:linear-gradient(#fff 0 46%,var(--team) 46%);border:3px solid var(--navy);border-radius:8px}
+.bt-arm-f{z-index:2;filter:brightness(.92)}
+.bt-arm-b{z-index:7}
+.bt-fore{position:absolute!important;left:-3px!important;top:28px!important;width:16px;height:41px;transform-origin:8px 4px;background:#FFE8D1;border:3px solid var(--navy);border-radius:8px}
+.bt-hand{width:17px;height:17px;margin:-8.5px 0 0 -8.5px;background:#FFE8D1;border:3px solid var(--navy);border-radius:50%;z-index:8}
+
+/* バット: .bt-batw = グリップ（下の手）の位置、.bt-bat はグリップを支点に 3D 回転 */
+.bt-batw{width:0;height:0;z-index:3}
+.bt-bat{position:absolute!important;left:-12px!important;top:-8px!important;width:152px;height:16px;transform-origin:12px 8px}
+.bt-bat>i{border:2.5px solid var(--navy)}
 .bt-handle{left:0;top:4px;width:74px;height:8px;background:#F0C68C;border-radius:4px}
 .bt-barrel{left:60px;top:0;width:92px;height:16px;background:linear-gradient(180deg,#C98345 0 45%,#A9662F 45%);border-radius:5px 10px 10px 5px}
 .bt-knob{left:-4px;top:2px;width:11px;height:12px;background:#8A5426;border-radius:50%}
-.bt-hands{position:absolute;left:-9px;top:-9px;width:24px;height:18px;z-index:2}
-.bt-hands>i{position:absolute;width:13px;height:13px;background:#FFE8D1;border:2.5px solid var(--navy);border-radius:50%}
-.bt-hands>i:first-child{left:0;top:2px}.bt-hands>i:last-child{left:8px;top:0}
-/* 強振の軌跡（半透明のくさび）。打球面の楕円に合わせて縦につぶす */
-.bt-trail{position:absolute;left:-150px;top:-150px;width:300px;height:300px;border-radius:50%;opacity:0;pointer-events:none;
-  background:conic-gradient(from 0deg,rgba(255,255,255,0) 0deg,rgba(255,255,255,.95) 18deg,rgba(255,250,210,.55) 95deg,rgba(255,255,255,0) 175deg,rgba(255,255,255,0) 360deg);
+
+/* 強振の軌跡（半透明のくさび）。インパクト位置のグリップ中心、スイング面の楕円に合わせて縦につぶす */
+.bt-trail{left:-50px!important;top:-44px!important;width:300px;height:300px;border-radius:50%;opacity:0;pointer-events:none;z-index:2;
+  background:conic-gradient(from 90deg,rgba(255,255,255,.95) 0deg,rgba(255,250,210,.55) 80deg,rgba(255,255,255,0) 170deg,rgba(255,255,255,0) 360deg);
   -webkit-mask:radial-gradient(circle,transparent 0 30%,#000 34% 69%,transparent 70%);mask:radial-gradient(circle,transparent 0 30%,#000 34% 69%,transparent 70%);
-  transform:rotate(6deg) scaleY(.4)}
-
-.chibi-batter.swing-meet .bt-rig,.chibi-batter.swing-power .bt-rig{animation:none}
-.chibi-batter.swing-meet .bt-swing{animation:bt-swing-meet .35s linear both}
-.chibi-batter.swing-meet .bt-pivot{animation:bt-hands-meet .35s ease-out both}
-.chibi-batter.swing-power .bt-swing{animation:bt-swing-power .42s linear both}
-.chibi-batter.swing-power .bt-pivot{animation:bt-hands-power .42s ease-out both}
-.chibi-batter.swing-power .bt-trail{animation:bt-trail .42s linear both}
-.chibi-batter.swing-meet .chibi-body{animation:bt-twist .35s ease-out both}
-.chibi-batter.swing-power .chibi-body{animation:bt-twist .42s ease-out both}
-.chibi-batter.swing-meet .chibi-head{animation:bt-head .35s ease-out both}
-.chibi-batter.swing-power .chibi-head{animation:bt-head .42s ease-out both}
-.chibi-batter.swing-meet .chibi-legs>i:last-child{animation:bt-step .35s ease-out both}
-.chibi-batter.swing-power .chibi-legs>i:last-child{animation:bt-step .42s ease-out both}
-.chibi-batter.swing-meet .chibi-legs>i:first-child,.chibi-batter.swing-power .chibi-legs>i:first-child{animation:bt-pivotfoot .4s ease-out both}
-
-/* ミート: 約90ms でゾーンを横切り、反対側の肩へフォロースルー */
-@keyframes bt-swing-meet{
-  0%{transform:rotateZ(45deg) rotateX(-22deg) rotateY(180deg);animation-timing-function:ease-in}
-  12%{transform:rotateZ(54deg) rotateX(-22deg) rotateY(190deg)}
-  26%{transform:rotateZ(6deg) rotateX(-22deg) rotateY(360deg)}
-  44%{transform:rotateZ(-8deg) rotateX(-22deg) rotateY(455deg);animation-timing-function:ease-out}
-  66%{transform:rotateZ(60deg) rotateX(-22deg) rotateY(528deg)}
-  84%{transform:rotateZ(54deg) rotateX(-22deg) rotateY(538deg);animation-timing-function:ease-in-out}
-  100%{transform:rotateZ(45deg) rotateX(-22deg) rotateY(540deg)}
-}
-@keyframes bt-hands-meet{
-  0%{transform:translate(0,0)}12%{transform:translate(-3px,2px)}26%{transform:translate(48px,15px)}
-  44%{transform:translate(52px,6px)}66%{transform:translate(34px,-6px)}84%{transform:translate(16px,-2px)}100%{transform:translate(0,0)}
-}
-/* 強振: 大きく引いて、より大きな弧（接触は約90ms = 21%） */
-@keyframes bt-swing-power{
-  0%{transform:rotateZ(45deg) rotateX(-22deg) rotateY(180deg);animation-timing-function:ease-in}
-  10%{transform:rotateZ(64deg) rotateX(-22deg) rotateY(172deg)}
-  21%{transform:rotateZ(4deg) rotateX(-22deg) rotateY(360deg)}
-  40%{transform:rotateZ(-16deg) rotateX(-22deg) rotateY(472deg);animation-timing-function:ease-out}
-  62%{transform:rotateZ(70deg) rotateX(-22deg) rotateY(550deg)}
-  82%{transform:rotateZ(56deg) rotateX(-22deg) rotateY(544deg);animation-timing-function:ease-in-out}
-  100%{transform:rotateZ(45deg) rotateX(-22deg) rotateY(540deg)}
-}
-@keyframes bt-hands-power{
-  0%{transform:translate(0,0)}10%{transform:translate(-7px,3px)}21%{transform:translate(54px,17px)}
-  40%{transform:translate(60px,6px)}62%{transform:translate(38px,-8px)}82%{transform:translate(16px,-2px)}100%{transform:translate(0,0)}
-}
-@keyframes bt-trail{0%,13%{opacity:0}21%{opacity:.85}38%{opacity:.6}55%,100%{opacity:0}}
-@keyframes bt-twist{0%{transform:none}26%{transform:translateX(4px) rotate(5deg)}60%{transform:translateX(5px) rotate(8deg)}100%{transform:none}}
-@keyframes bt-head{0%{transform:none}26%{transform:translateX(3px) rotate(4deg)}60%{transform:translateX(4px) rotate(6deg)}100%{transform:none}}
-@keyframes bt-step{0%{transform:none}10%{transform:translate(-1px,-7px) rotate(-12deg)}24%{transform:translate(9px,0)}85%{transform:translate(9px,0)}100%{transform:none}}
-@keyframes bt-pivotfoot{0%{transform:none}30%{transform:rotate(14deg)}80%{transform:rotate(14deg)}100%{transform:none}}
-
-/* 動きを減らす設定: 体の動き・軌跡なしの簡単なスイング（全体の animation:none より優先） */
-@media (prefers-reduced-motion:reduce){
-  .chibi-batter.swing-meet .bt-swing,.chibi-batter.swing-power .bt-swing{animation:bt-swing-simple .3s ease-out both!important}
-}
-@keyframes bt-swing-simple{
-  0%{transform:rotateZ(45deg) rotateX(-22deg) rotateY(180deg)}
-  30%{transform:rotateZ(6deg) rotateX(-22deg) rotateY(360deg)}
-  100%{transform:rotateZ(45deg) rotateX(-22deg) rotateY(540deg)}
-}
+  transform:scaleY(.38)}
 
 /* ---------- 試合ヘッダーのボタン・結果オーバーレイの色分け ---------- */
 .gh-btns{display:flex;gap:10px;align-items:center}

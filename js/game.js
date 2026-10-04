@@ -80,12 +80,189 @@ function chibiHTML(extraClass, color, number) {
   return `<div class="chibi ${extraClass}" style="--team:${esc(color)}">${CHIBI_HEAD}<div class="chibi-body">${esc(number)}</div><div class="chibi-legs"><i></i><i></i></div></div>`;
 }
 
-/**
- * 打者のちびキャラ。右打者の向き（本塁 = 画面右）で組み、左打者は外側で scaleX(-1)。
- * バットはグリップ（手）を支点に回転する（.bt-pivot = 手の位置、.bt-swing = 3D 回転）。
+/*
+ * 打者ちびキャラ（捕手視点）。右打者の向きで組み、左打者は .chibi-batter 自体を scaleX(-1)。
+ * 右打者は本塁の左（三塁側）に立ち、胸は本塁（画面右）、左肩は投手（画面奥）、顔は投手へ向く
+ * ＝ カメラからは背中（背番号）と後頭部が見える 3/4 後ろ姿。
+ * 腕は 上腕 + 前腕 の 2 関節（肩・肘で回転）。手（グリップ）の位置とバットの向きをポーズとして与え、
+ * 2 リンク IK で肘角を解く（肘は人間の向きにしか曲がらない: 屈曲側を固定、伸び切りでのみ切替）。
+ * バットはグリップ（下の手）を支点に 3D 回転: rotateX(カメラ俯角) rotateY(φ: 水平方向) rotateZ(-ε: 仰角)。
+ *   φ=0 本塁方向（画面右）/ 90 投手方向（奥）/ 180 三塁側（画面左）/ 270 捕手方向（手前）。
+ * 座標は .bt-rig 内の px（128×176、肩幅などはちび体型）。
  */
+const BT = {
+  L1: 31, L2: 31,            // 上腕・前腕の長さ
+  SHOULDER: 20,              // 肩の半幅
+  GRIP: 13,                  // 下の手 → 上の手の距離（バット軸方向）
+  TORSO_PIVOT: [62, 134],    // 胴の回転中心（腰）
+  TILT_X: -20,               // カメラ俯角（バットの奥行きを少し上へ投影）
+};
+const BT_PARTS = ['legF', 'shoeF', 'legB', 'shoeB', 'armF', 'foreF', 'torso', 'numw', 'head', 'batw', 'bat', 'armB', 'foreB', 'handF', 'handB', 'trail'];
+
+/* ポーズの制御点（t: ms）。G=下の手（グリップ）, phi/eps=バット, r=体の回転（0=構え〔胸は本塁〕, 1=胸が投手）,
+   tilt=胴の傾き（後ろ肩が下がる = 正）, ff=前足の踏み込み[x,y], lift=前足の上げ, bk=後ろ膝の送り, heel=後ろかかと,
+   fe=前腕の肘の屈曲側（+1: 構え〜インパクト, -1: フォロー）, bz=バットの奥行き（3=体の奥, 6=手前）,
+   back=腕・手が胸の前（体の奥）に回ったか（0/1）, trail=強振の軌跡の不透明度,
+   sw=ステップ値（fe/bz/back）を直前の区間のどこで切り替えるか（既定 0.5） */
+const STANCE = { G: [106, 52], phi: 160, eps: 50, r: 0, tilt: 0, ff: [0, 0], lift: 0, bk: 0, heel: 0, fe: 1, bz: 3, back: 0, trail: 0 };
+const pose = (t, o) => ({ ...STANCE, t, ...o });
+const SWING_KEYS = {
+  meet: [
+    pose(0, {}),
+    pose(28, { G: [106, 50], phi: 164, eps: 58, r: -0.06, ff: [-2, -2], lift: 6 }),                       // ① 溜め: 前足を上げ、手は後ろに残す
+    pose(58, { sw: 0.85, G: [102, 88], phi: 262, eps: 30, r: 0.45, tilt: 5, ff: [-5, -3], lift: 0, bk: 6, bz: 6 }), // ② 腰→肩の回転、手はトップから下へ、後ろ肘を腰へ
+    pose(90, { G: [98, 104], phi: 368, eps: 2, r: 0.8, tilt: 6, ff: [-5, -3], bk: 12, heel: 14, bz: 3 }), // ③ インパクト: レベルに振り抜く
+    pose(125, { G: [106, 94], phi: 438, eps: -14, r: 1.05, tilt: 3, ff: [-5, -3], bk: 15, heel: 22, fe: -1, back: 1 }), // 腕が伸び切る
+    pose(165, { G: [66, 66], phi: 512, eps: 20, r: 1.14, tilt: 0, ff: [-5, -3], bk: 16, heel: 26, fe: -1, back: 1 }),  // ④ リストを返す
+    pose(215, { G: [33, 60], phi: 588, eps: 28, r: 1.18, tilt: -2, ff: [-5, -3], bk: 16, heel: 28, fe: -1, back: 1, bz: 6 }), // 前肩の上へフィニッシュ
+    pose(250, { G: [34, 62], phi: 590, eps: 30, r: 1.16, tilt: -2, ff: [-5, -3], bk: 15, heel: 26, fe: -1, back: 1, bz: 6 }),
+    pose(300, { G: [64, 50], phi: 560, eps: 30, r: 0.5, ff: [-2, -1], bk: 5, heel: 8, fe: -1, back: 1, bz: 3 }), // 頭の後ろを通って戻す
+    pose(350, { phi: 520 }),                                                                              // ⑤ 構えに戻る
+  ],
+  power: [
+    pose(0, {}),
+    pose(34, { G: [107, 49], phi: 166, eps: 62, r: -0.12, ff: [-3, -3], lift: 9 }),
+    pose(62, { sw: 0.85, G: [103, 88], phi: 260, eps: 30, r: 0.45, tilt: 6, ff: [-9, -5], lift: 0, bk: 8, bz: 6 }),
+    pose(90, { G: [98, 106], phi: 368, eps: 1, r: 0.85, tilt: 8, ff: [-9, -5], bk: 15, heel: 18, bz: 3, trail: 0.85 }),
+    pose(130, { G: [108, 94], phi: 448, eps: -14, r: 1.12, tilt: 4, ff: [-9, -5], bk: 18, heel: 26, fe: -1, back: 1, trail: 0.6 }),
+    pose(175, { G: [64, 62], phi: 528, eps: 22, r: 1.22, tilt: 0, ff: [-9, -5], bk: 20, heel: 30, fe: -1, back: 1, trail: 0.15 }),
+    pose(235, { G: [31, 58], phi: 594, eps: 32, r: 1.3, tilt: -3, ff: [-9, -5], bk: 20, heel: 32, fe: -1, back: 1, bz: 6 }),
+    pose(290, { G: [32, 60], phi: 596, eps: 34, r: 1.26, tilt: -3, ff: [-9, -5], bk: 18, heel: 30, fe: -1, back: 1, bz: 6 }),
+    pose(355, { G: [64, 50], phi: 570, eps: 30, r: 0.5, ff: [-3, -2], bk: 6, heel: 8, fe: -1, back: 1, bz: 3 }),
+    pose(420, { phi: 520 }),
+  ],
+  // prefers-reduced-motion: 体・足は動かさず、腕とバットだけの短いスイング
+  simple: [
+    pose(0, {}),
+    pose(100, { G: [98, 104], phi: 368, eps: 2, r: 0.6, bz: 3 }),
+    pose(170, { sw: 0.25, G: [40, 62], phi: 588, eps: 26, r: 0.9, fe: -1, back: 1, bz: 6 }),
+    pose(240, { G: [64, 50], phi: 560, eps: 30, r: 0.4, fe: -1, back: 1, bz: 3 }),
+    pose(300, { phi: 520 }),
+  ],
+};
+const STEP_KEYS = ['fe', 'bz', 'back'];
+
+/** 制御点を Catmull-Rom で補間（ステップ値は区間の sw〔既定 0.5〕で切り替え） */
+function sampleKeys(keys, t) {
+  let i = 0;
+  while (i < keys.length - 2 && t > keys[i + 1].t) i++;
+  const k0 = keys[Math.max(0, i - 1)], k1 = keys[i], k2 = keys[i + 1], k3 = keys[Math.min(keys.length - 1, i + 2)];
+  const u = clamp((t - k1.t) / (k2.t - k1.t || 1), 0, 1);
+  const cr = (a, b, c, d) => {
+    const m1 = (c - a) / ((k2.t - k0.t) || 1) * (k2.t - k1.t);
+    const m2 = (d - b) / ((k3.t - k1.t) || 1) * (k2.t - k1.t);
+    const u2 = u * u, u3 = u2 * u;
+    return (2 * u3 - 3 * u2 + 1) * b + (u3 - 2 * u2 + u) * m1 + (-2 * u3 + 3 * u2) * c + (u3 - u2) * m2;
+  };
+  const out = { t };
+  for (const key of Object.keys(STANCE)) {
+    if (STEP_KEYS.includes(key)) { out[key] = (u >= (k2.sw ?? 0.5) ? k2 : k1)[key]; continue; }
+    if (Array.isArray(STANCE[key])) out[key] = [0, 1].map((j) => cr(k0[key][j], k1[key][j], k2[key][j], k3[key][j]));
+    else out[key] = cr(k0[key], k1[key], k2[key], k3[key]);
+  }
+  out.trail = clamp(out.trail, 0, 1);
+  return out;
+}
+
+/** 2 リンク IK。side=+1/-1 で肘の屈曲側を選ぶ（届かない時は伸び切り）。CSS rotate 角（下向き 0°）を返す */
+function solveArm(S, T, side) {
+  const { L1, L2 } = BT;
+  const dx = T[0] - S[0], dy = T[1] - S[1];
+  const d = clamp(Math.hypot(dx, dy), Math.abs(L1 - L2) + 1, L1 + L2 - 0.01);
+  const ux = dx / (Math.hypot(dx, dy) || 1), uy = dy / (Math.hypot(dx, dy) || 1);
+  const a = (L1 * L1 - L2 * L2 + d * d) / (2 * d);
+  const h = Math.sqrt(Math.max(0, L1 * L1 - a * a)) * side;
+  const E = [S[0] + a * ux - h * uy, S[1] + a * uy + h * ux];
+  const ang = (vx, vy) => Math.atan2(-vx, vy) * 180 / Math.PI;
+  const a1 = ang(E[0] - S[0], E[1] - S[1]);
+  let a2 = ang(T[0] - E[0], T[1] - E[1]) - a1;
+  a2 = ((a2 + 540) % 360) - 180;
+  return { a1, a2 };
+}
+
+/** バット軸（単位長）の画面投影 [x, y] */
+function batVec(phi, eps) {
+  const p = phi * Math.PI / 180, e = eps * Math.PI / 180, tx = BT.TILT_X * Math.PI / 180;
+  const y1 = -Math.sin(e), z1 = -Math.cos(e) * Math.sin(p);
+  return [Math.cos(e) * Math.cos(p), y1 * Math.cos(tx) - z1 * Math.sin(tx)];
+}
+
+const r1 = (v) => Math.round(v * 10) / 10;
+/** ポーズ → 各パーツの { transform, zIndex?, opacity? } */
+function poseStyles(p) {
+  const r = p.r, rc = clamp(r, 0, 1);
+  const tx = -2 + 4 * r;
+  const [px, py] = BT.TORSO_PIVOT;
+  const rot = (pt) => {
+    const th = p.tilt * Math.PI / 180, x = pt[0] - px, y = pt[1] - py;
+    return [px + tx + x * Math.cos(th) - y * Math.sin(th), py + x * Math.sin(th) + y * Math.cos(th)];
+  };
+  // 肩: 胸の向き β（0=本塁, 90=投手）。構え β=30° では肩が前後に重なり、回転すると左右に開く（後ろ肩が本塁側へ）。
+  // 奥（投手側）の肩はカメラ俯角で少し上に見える
+  const beta = (30 + 60 * r) * Math.PI / 180, R = BT.SHOULDER;
+  const Sb = rot([62 + R * Math.sin(beta), 82 + 0.2 * R * Math.cos(beta)]);
+  const Sf = rot([62 - R * Math.sin(beta), 82 - 0.2 * R * Math.cos(beta)]);
+  const [bx, by] = batVec(p.phi, p.eps);
+  const Hf = p.G, Hb = [p.G[0] + BT.GRIP * bx, p.G[1] + BT.GRIP * by];
+  const armB = solveArm(Sb, Hb, 1);        // 後ろ腕: 構えで肘が上、振り出しで腰へ畳む（同じ屈曲側のまま）
+  const armF = solveArm(Sf, Hf, p.fe);     // 前腕: インパクトで伸び切り、フォローで反対側へ畳む
+  const back = p.back > 0;
+  return {
+    legF: { transform: `translate(${r1(p.ff[0])}px,${r1(p.ff[1] - p.lift)}px) rotate(${r1(p.lift * 1.6)}deg)` },
+    shoeF: { transform: `rotate(${r1(-p.lift * 1.2)}deg)` },
+    legB: { transform: `rotate(${r1(-p.bk)}deg)` },
+    shoeB: { transform: `rotate(${r1(-p.heel)}deg)` },
+    armF: { transform: `translate(${r1(Sf[0])}px,${r1(Sf[1])}px) rotate(${r1(armF.a1)}deg)` },
+    foreF: { transform: `rotate(${r1(armF.a2)}deg)` },
+    torso: { transform: `translateX(${r1(tx)}px) rotate(${r1(p.tilt)}deg) scaleX(${r1((0.86 + 0.14 * rc) * 100) / 100})` },
+    numw: { transform: `translateX(${r1(-11 + 11 * rc)}px)` },
+    head: { transform: `translate(${r1(tx * 0.5)}px,${r1(Math.max(0, p.tilt) * 0.3)}px) rotate(${r1(p.tilt * 0.3)}deg)` },
+    batw: { transform: `translate(${r1(p.G[0])}px,${r1(p.G[1])}px)`, zIndex: p.bz },
+    bat: { transform: `rotateX(${BT.TILT_X}deg) rotateY(${r1(p.phi)}deg) rotateZ(${r1(-p.eps)}deg)` },
+    armB: { transform: `translate(${r1(Sb[0])}px,${r1(Sb[1])}px) rotate(${r1(armB.a1)}deg)`, zIndex: back ? 2 : 7 },
+    foreB: { transform: `rotate(${r1(armB.a2)}deg)` },
+    handF: { transform: `translate(${r1(Hf[0])}px,${r1(Hf[1])}px)`, zIndex: back && p.bz < 6 ? 3 : 8 },
+    handB: { transform: `translate(${r1(Hb[0])}px,${r1(Hb[1])}px)`, zIndex: back && p.bz < 6 ? 3 : 8 },
+    trail: { opacity: r1(p.trail * 100) / 100 },
+  };
+}
+
+/** スイングのキーフレーム（パーツ別、WAAPI 用）。モジュール読み込み時に 1 回だけ計算 */
+function buildSwing(keys) {
+  const dur = keys[keys.length - 1].t;
+  const times = [];
+  for (let t = 0; t < Math.min(dur, 260); t += 10) times.push(t);
+  for (let t = 260; t < dur; t += 20) times.push(t);
+  times.push(dur);
+  const frames = Object.fromEntries(BT_PARTS.map((k) => [k, []]));
+  for (const t of times) {
+    const st = poseStyles(sampleKeys(keys, t));
+    for (const k of BT_PARTS) frames[k].push({ offset: t / dur, ...st[k] });
+  }
+  return { dur, frames };
+}
+const SWINGS = Object.fromEntries(Object.entries(SWING_KEYS).map(([k, keys]) => [k, buildSwing(keys)]));
+const STANCE_STYLE = poseStyles({ t: 0, ...STANCE });
+const styleAttr = (part) => {
+  const s = STANCE_STYLE[part];
+  return `transform:${s.transform}${s.zIndex != null ? `;z-index:${s.zIndex}` : ''}${s.opacity != null ? `;opacity:${s.opacity}` : ''}`;
+};
+
+/** 打者のちびキャラ HTML（data-bt="パーツ名" をアニメーション対象にする） */
 function batterHTML(color, number) {
-  return `<div class="chibi chibi-batter" style="--team:${esc(color)}"><div class="bt-rig">${CHIBI_HEAD}<div class="chibi-body"><span class="bt-num">${esc(number)}</span></div><div class="chibi-legs"><i></i><i></i></div><div class="bt-pivot"><i class="bt-trail"></i><div class="bt-swing"><div class="bt-bat"><i class="bt-handle"></i><i class="bt-barrel"></i><i class="bt-knob"></i></div></div><div class="bt-hands"><i></i><i></i></div></div></div></div>`;
+  const P = (part, cls, inner = '') => `<div class="${cls}" data-bt="${part}" style="${styleAttr(part)}">${inner}</div>`;
+  const arm = (side) => P(`arm${side}`, `bt-arm bt-arm-${side.toLowerCase()}`, P(`fore${side}`, 'bt-fore'));
+  return `<div class="chibi chibi-batter" style="--team:${esc(color)}"><div class="bt-rig">`
+    + P('legF', 'bt-leg bt-leg-f', P('shoeF', 'bt-shoe'))
+    + P('legB', 'bt-leg bt-leg-b', P('shoeB', 'bt-shoe'))
+    + arm('F')
+    + P('torso', 'bt-torso', P('numw', 'bt-numw', `<span class="bt-num">${esc(number)}</span>`) + '<i class="bt-belt"></i>')
+    + P('head', 'bt-head', '<i class="bt-neck"></i><i class="bt-skull"></i><i class="bt-ear"></i><i class="bt-hair"></i><i class="bt-helmet"></i><i class="bt-flap"></i><i class="bt-logo"></i>')
+    + P('batw', 'bt-batw', P('bat', 'bt-bat', '<i class="bt-handle"></i><i class="bt-barrel"></i><i class="bt-knob"></i>'))
+    + arm('B')
+    + P('handF', 'bt-hand bt-hand-f') + P('handB', 'bt-hand bt-hand-b')
+    + P('trail', 'bt-trail')
+    + '</div></div>';
 }
 
 /** イベントから安打の塁打数を推定（1..3、不明なら 1） */
@@ -476,16 +653,28 @@ export function createGameScreen(el, ctx) {
   }
 
   // ---------- swing animation ----------
-  /** スイング（キー押下・CPU 打者共通）。CSS キーフレーム .swing-meet / .swing-power */
+  let swingAnims = [];
+  /** スイング（キー押下・CPU 打者共通）。パーツ別の WAAPI キーフレーム（SWINGS）を再生 */
   function swingAnim(mode) {
     const n = dom.batterChibi;
     if (!n) return;
-    const cls = mode === 'power' ? 'swing-power' : 'swing-meet';
+    const kind = mode === 'power' ? 'power' : 'meet';
+    const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const sw = SWINGS[reduce ? 'simple' : kind];
+    const cls = `swing-${kind}`;
+    swingAnims.forEach((a) => { try { a.cancel(); } catch (e) { /* ignore */ } });
+    swingAnims = [];
     n.classList.remove('swing-meet', 'swing-power');
     void n.offsetWidth; // reflow して再生し直す
     n.classList.add(cls);
+    if (typeof n.animate === 'function') {
+      n.querySelectorAll('[data-bt]').forEach((part) => {
+        const frames = sw.frames[part.dataset.bt];
+        if (frames) swingAnims.push(part.animate(frames, { duration: sw.dur, easing: 'linear' }));
+      });
+    }
     clearTimeout(swingTimer);
-    swingTimer = setTimeout(() => { n.classList.remove(cls); swingTimer = 0; }, SWING_MS[mode === 'power' ? 'power' : 'meet'] + 40);
+    swingTimer = setTimeout(() => { n.classList.remove(cls); swingTimer = 0; }, Math.max(sw.dur, SWING_MS[kind]) + 40);
   }
 
   // ---------- flow ----------
@@ -1008,6 +1197,8 @@ export function createGameScreen(el, ctx) {
     hitRaf = 0;
     clearTimers();
     clearTimeout(swingTimer);
+    swingAnims.forEach((a) => { try { a.cancel(); } catch (e) { /* ignore */ } });
+    swingAnims = [];
     if (duckTimer) { clearTimeout(duckTimer); duckTimer = 0; try { ctx.music?.duck?.(false); } catch (e) { /* ignore */ } }
     if (fieldView) { try { fieldView.destroy(); } catch (e) { /* ignore */ } fieldView = null; }
     if (subsMenu) { const m = subsMenu; subsMenu = null; try { m.close(); } catch (e) { /* ignore */ } }
