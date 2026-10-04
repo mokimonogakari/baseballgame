@@ -10,3 +10,13 @@
 .set-help{margin:10px 0 0;font-size:17px;font-weight:700;color:var(--muted);min-height:24px}
 .set-test{align-self:flex-start;height:56px;padding:0 36px;border:4px solid var(--navy);border-radius:14px;box-shadow:0 5px 0 var(--navy);background:var(--navy);color:#fff;font:inherit;font-size:22px;font-weight:900;cursor:pointer;margin-top:4px}
 .set-test:active{transform:translateY(3px);box-shadow:0 2px 0 var(--navy)}
+.seg-vol{gap:10px}
+.seg-vol .seg-btn{flex:1;height:56px;font-size:24px}
+.settings-body{gap:14px;padding-top:20px}
+.settings-body{gap:6px;padding-top:12px;padding-bottom:8px}
+.settings-body .set-group h3{margin-bottom:4px;font-size:22px}
+.settings-body .seg-btn{height:52px;font-size:24px}
+.settings-body .seg-vol .seg-btn{height:48px}
+.settings-body .set-help{margin:4px 0 0;min-height:20px;font-size:15px}
+.settings-body .set-test{height:48px;margin-top:2px;font-size:20px}
+.settings-body{gap:12px}

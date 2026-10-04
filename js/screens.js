@@ -218,13 +218,15 @@ const SET_GROUPS = [
   { key: 'innings', label: 'イニング', opts: [[3, '3'], [6, '6'], [9, '9']] },
   { key: 'difficulty', label: '難易度', opts: [['easy', 'かんたん'], ['normal', 'ふつう'], ['hard', 'むずかしい']] },
   { key: 'sound', label: 'サウンド', opts: [[true, 'オン'], [false, 'オフ']] },
+  { key: 'music', label: 'BGM', opts: [[true, 'オン'], [false, 'オフ']] },
+  { key: 'musicVolume', label: 'BGM 音量', cls: 'seg-vol', opts: [[0.2, '1'], [0.4, '2'], [0.6, '3'], [0.8, '4'], [1, '5']] },
 ];
 const DIFF_HELP = { easy: '球が遅く、通過位置が見える', normal: 'ふつう', hard: '球が速い' };
 
 export function renderSettings(el, ctx) {
   const cur = ctx.settings || {};
-  const groups = SET_GROUPS.map((g) => `<div class="set-group"><h3>${g.label}</h3><div class="seg">${g.opts.map(([v, l]) =>
-    `<button class="seg-btn${cur[g.key] === v ? ' selected' : ''}" data-key="${g.key}" data-val="${esc(v)}">${l}</button>`).join('')}</div>
+  const groups = SET_GROUPS.map((g) => `<div class="set-group"><h3>${g.label}</h3><div class="seg${g.cls ? ' ' + g.cls : ''}">${g.opts.map(([v, l]) =>
+    `<button class="seg-btn${(g.key === 'musicVolume' ? Math.abs((cur.musicVolume ?? 0.7) - v) < 0.1 : cur[g.key] === v) ? ' selected' : ''}" data-key="${g.key}" data-val="${esc(v)}">${l}</button>`).join('')}</div>
     ${g.key === 'difficulty' ? `<p class="set-help">${esc(DIFF_HELP[cur.difficulty] || '')}</p>` : ''}</div>`).join('');
   el.innerHTML = `<div class="settings" style="position:absolute;inset:0">
     <div class="settings-header"><button class="back-btn" data-act="back">もどる</button><h2>せってい</h2></div>
@@ -235,7 +237,7 @@ export function renderSettings(el, ctx) {
   el.querySelectorAll('.seg-btn').forEach((b) => (b.onclick = () => {
     const key = b.dataset.key;
     const raw = b.dataset.val;
-    const val = key === 'innings' ? Number(raw) : key === 'sound' ? raw === 'true' : raw;
+    const val = key === 'innings' ? Number(raw) : key === 'sound' || key === 'music' ? raw === 'true' : key === 'musicVolume' ? Number(raw) : raw;
     ctx.saveSettings({ [key]: val });
     renderSettings(el, ctx);
     if (key === 'sound' && val) ctx.sound.play('select');
