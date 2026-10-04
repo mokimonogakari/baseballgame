@@ -1,17 +1,110 @@
-/* WebAudio-synthesized sound effects. No audio files. Every call is safe/no-throw. */
+/* WebAudio sound effects (synthesized) + recorded umpire voice clips
+ * (assets/voice/*, generated with VOICEVOX:青山龍星 — see assets/voice/CREDITS.md).
+ * Every call is safe/no-throw. */
+
+// Voice clip variants per play name. A random variant is chosen on each call.
+const VOICE_CLIPS = {
+  strike: ['strike', 'strike2'],
+  strikeout: ['strikeout'],
+  out: ['out', 'out2'],
+  ball: ['ball'],
+  foul: ['foul'],
+};
+// Per-call gain (relative to the voice bus). Ball is called calmer.
+const VOICE_LEVEL = { strike: 1, strikeout: 1, out: 1, ball: 0.75, foul: 0.85 };
+// speechSynthesis fallback text when a clip cannot be loaded.
+const VOICE_TEXT = {
+  strike: 'ストラーイク！', strikeout: 'ストライク、バッターアウト！', out: 'アウトォ！',
+  ball: 'ボール', foul: 'ファウルボール！',
+};
+const VOICE_DIR = 'assets/voice/';
+
+function pickExt() {
+  try {
+    const a = document.createElement('audio');
+    if (a.canPlayType && a.canPlayType('audio/ogg; codecs="vorbis"')) return ['ogg', 'mp3'];
+  } catch (e) { /* ignore */ }
+  return ['mp3', 'ogg'];
+}
+
 export function createSound({ enabled = true } = {}) {
   let on = !!enabled;
-  let ac = null, master = null, noiseBuf = null, pinkBuf = null;
+  let ac = null, master = null, voiceBus = null, noiseBuf = null, pinkBuf = null;
+  // clip id -> AudioBuffer | null (failed); missing key = still loading
+  const voiceBufs = {};
+  const voiceBytes = {};
+  let voiceLoad = null;
+  let curVoice = null;
+
+  // Start downloading clip bytes right away (no AudioContext needed for fetch).
+  const exts = pickExt();
+  async function fetchClip(id) {
+    if (typeof fetch !== 'function') throw new Error('no fetch');
+    let lastErr;
+    for (const ext of exts) {
+      try {
+        const r = await fetch(VOICE_DIR + id + '.' + ext);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return { ext, buf: await r.arrayBuffer() };
+      } catch (e) { lastErr = e; }
+    }
+    throw lastErr || new Error('load failed');
+  }
+  const clipIds = [...new Set(Object.values(VOICE_CLIPS).flat())];
+  try {
+    for (const id of clipIds) {
+      voiceBytes[id] = fetchClip(id);
+      voiceBytes[id].catch(() => {}); // handled in decode
+    }
+  } catch (e) { /* ignore */ }
+
+  function decode(c, data) {
+    return new Promise((res, rej) => {
+      try {
+        const p = c.decodeAudioData(data, res, rej);
+        if (p && typeof p.then === 'function') p.then(res, rej);
+      } catch (e) { rej(e); }
+    });
+  }
+  function loadVoices(c) {
+    if (voiceLoad) return voiceLoad;
+    voiceLoad = Promise.all(clipIds.map(async (id) => {
+      try {
+        const got = await voiceBytes[id];
+        try {
+          voiceBufs[id] = await decode(c, got.buf.slice(0));
+        } catch (e) {
+          // decoding failed for this format: try the other one
+          const alt = exts.find((x) => x !== got.ext);
+          const r = await fetch(VOICE_DIR + id + '.' + alt);
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          voiceBufs[id] = await decode(c, await r.arrayBuffer());
+        }
+      } catch (e) {
+        voiceBufs[id] = null;
+      }
+    })).then(() => {
+      const ok = clipIds.filter((id) => voiceBufs[id]);
+      return { loaded: ok, failed: clipIds.filter((id) => !voiceBufs[id]) };
+    }).catch(() => ({ loaded: [], failed: clipIds.slice() }));
+    return voiceLoad;
+  }
 
   function ensure() {
     if (ac) return ac;
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
-      ac = new AC();
+      ac = (window.__dokiAudioCtx && typeof window.__dokiAudioCtx.createGain === 'function')
+        ? window.__dokiAudioCtx : new AC();
+      if (!window.__dokiAudioCtx) window.__dokiAudioCtx = ac;
       master = ac.createGain();
       master.gain.value = 0.5;
       master.connect(ac.destination);
+      // Umpire voice sits a little above the SFX bus.
+      voiceBus = ac.createGain();
+      voiceBus.gain.value = 0.8;
+      voiceBus.connect(ac.destination);
       const len = ac.sampleRate * 2;
       noiseBuf = ac.createBuffer(1, len, ac.sampleRate);
       const d = noiseBuf.getChannelData(0);
@@ -25,6 +118,7 @@ export function createSound({ enabled = true } = {}) {
         p[i] = (b0 + b1 + b2 + w * 0.1848) * 0.25;
       }
     } catch (e) { ac = null; }
+    if (ac) { try { loadVoices(ac); } catch (e) { /* ignore */ } }
     return ac;
   }
 
@@ -66,12 +160,29 @@ export function createSound({ enabled = true } = {}) {
       if (ss && typeof SpeechSynthesisUtterance !== 'undefined') {
         ss.cancel();
         const u = new SpeechSynthesisUtterance(text);
-        u.lang = 'ja-JP'; u.rate = 1.1; u.volume = 0.9;
+        u.lang = 'ja-JP'; u.rate = 0.9; u.pitch = 0.6; u.volume = 1;
         ss.speak(u);
         return;
       }
     } catch (e) { /* fall through */ }
     tone(t, fallbackFreq, 0.18, { type: 'triangle', peak: 0.3 });
+  }
+  // Play a recorded umpire call; falls back to speechSynthesis if unavailable.
+  function voice(name, fallbackFreq, t) {
+    const ids = VOICE_CLIPS[name] || [];
+    const ready = ids.filter((id) => voiceBufs[id]);
+    if (!ready.length) { speak(VOICE_TEXT[name] || '', fallbackFreq, t); return; }
+    const id = ready[Math.floor(Math.random() * ready.length)];
+    try { if (curVoice) curVoice.stop(); } catch (e) { /* ignore */ }
+    try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) { /* ignore */ }
+    const src = ac.createBufferSource();
+    src.buffer = voiceBufs[id];
+    const g = ac.createGain();
+    g.gain.value = VOICE_LEVEL[name] != null ? VOICE_LEVEL[name] : 1;
+    src.connect(g); g.connect(voiceBus);
+    src.onended = () => { if (curVoice === src) curVoice = null; try { g.disconnect(); } catch (e) { /* ignore */ } };
+    src.start(t);
+    curVoice = src;
   }
 
   const SOUNDS = {
@@ -82,9 +193,11 @@ export function createSound({ enabled = true } = {}) {
       crack(t);
       [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(t + 0.25 + i * 0.13, f, i === 3 ? 0.6 : 0.16, { type: 'square', peak: 0.18, a: 0.01 }));
     },
-    strike(t) { speak('ストライク！', 520, t); tone(t, 800, 0.05, { type: 'square', peak: 0.12 }); },
-    ball(t) { speak('ボール', 330, t); },
-    out(t) { speak('アウト！', 260, t); },
+    strike(t) { voice('strike', 520, t); },
+    strikeout(t) { voice('strikeout', 520, t); },
+    ball(t) { voice('ball', 330, t); },
+    out(t) { voice('out', 260, t); },
+    foul(t) { voice('foul', 400, t); },
     cheer(t) { noise(t, 1.2, { type: 'bandpass', f0: 700, f1: 1400, q: 0.6, peak: 0.6, a: 0.5, buf: pinkBuf }); },
     catch(t) {
       tone(t, 160, 0.12, { peak: 0.7, a: 0.002, f1: 60 });
@@ -114,7 +227,19 @@ export function createSound({ enabled = true } = {}) {
   }
   function setEnabled(v) {
     on = !!v;
-    if (!on) { try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) { /* ignore */ } }
+    if (!on) {
+      try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) { /* ignore */ }
+      try { if (curVoice) curVoice.stop(); } catch (e) { /* ignore */ }
+      curVoice = null;
+    }
   }
-  return { play, setEnabled, unlock };
+  // Optional: resolves to { loaded: [...ids], failed: [...ids] } once clips are decoded.
+  function voiceReady() {
+    try {
+      const c = ensure();
+      if (!c) return Promise.resolve({ loaded: [], failed: clipIds.slice() });
+      return loadVoices(c);
+    } catch (e) { return Promise.resolve({ loaded: [], failed: clipIds.slice() }); }
+  }
+  return { play, setEnabled, unlock, voiceReady };
 }

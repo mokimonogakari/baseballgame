@@ -59,7 +59,7 @@ export function renderTitle(el, ctx) {
       <div class="row"><b>Enter</b><span>決定</span></div>
       <div class="row"><b>Esc</b><span>戻る</span></div>
     </div>
-    <div class="footer"><span>GitHub Pages で配信 ・ 静的 HTML / CSS / JavaScript</span><span>v0.1</span></div>
+    <div class="footer"><span>GitHub Pages で配信 ・ 球審ボイス VOICEVOX:青山龍星</span><span>v0.3</span></div>
   </div>`;
   el.querySelector('[data-act="game"]').onclick = () => ctx.go('game');
   el.querySelector('[data-act="team"]').onclick = () => ctx.go('team');

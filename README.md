@@ -32,3 +32,8 @@ node --test tests/
 
 `main` ブランチへの push で `.github/workflows/pages.yml` が自動デプロイします。
 初回のみ、リポジトリの Settings → Pages → Source を「GitHub Actions」にしてください。
+
+## クレジット
+
+- 球審ボイス: VOICEVOX:青山龍星（詳細は [assets/voice/CREDITS.md](assets/voice/CREDITS.md)）
+- 音楽・効果音: ブラウザ内で合成したオリジナル
