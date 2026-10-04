@@ -463,7 +463,7 @@ export function resolvePitch(state, pitchInput, batInput, rng = Math.random) {
         event.kind = 'strikeout';
         bs.ab += 1; bs.so += 1; ps.k += 1;
         addOut(s);
-        event.text = batInput ? `空振り三振！ ${pname}に${batter.name}のバットが空を切る！` : `見逃し三振！ ${pname}がズバッと決まった！`;
+        event.text = batInput ? `空振り三振！ ${pname}に${batter.name}のバットが空を切る！` : `見逃し三振！ ${pname}がズバッと決まり${batter.name}は手が出ない！`;
         endPlateAppearance(s, event);
       } else {
         event.kind = 'strike';
@@ -491,7 +491,7 @@ export function resolvePitch(state, pitchInput, batInput, rng = Math.random) {
           if (bases[1] && s.outs < 3) runs += 1; else nb[2] = true;
         }
         s.bases = nb;
-        event.text = `${dir}ゴロ、ダブルプレー！`;
+        event.text = `${batter.name}、${dir}ゴロ…ダブルプレー！`;
       } else {
         addOut(s);
         let scored = 0;
@@ -505,7 +505,7 @@ export function resolvePitch(state, pitchInput, batInput, rng = Math.random) {
           s.bases = nb;
         }
         runs = scored;
-        event.text = `${dir}ゴロ、アウト。${runs ? '三塁走者生還！' : ''}`;
+        event.text = `${batter.name}、${dir}ゴロ、アウト。${runs ? '三塁走者生還！' : ''}`;
       }
       addRuns(s, runs, batter, !event.doublePlay);
       endPlateAppearance(s, event);
@@ -520,10 +520,10 @@ export function resolvePitch(state, pitchInput, batInput, rng = Math.random) {
         bases[2] = false;
         runs = 1;
         event.sacFly = true;
-        event.text = `${dir}フライ、タッチアップ！ 犠牲フライで1点！`;
+        event.text = `${batter.name}、${dir}フライ、タッチアップ！ 犠牲フライで1点！`;
       } else {
         bs.ab += 1;
-        event.text = `${dir}フライ、アウト。`;
+        event.text = `${batter.name}、${dir}フライ、アウト。`;
       }
       addRuns(s, runs, batter);
       endPlateAppearance(s, event);

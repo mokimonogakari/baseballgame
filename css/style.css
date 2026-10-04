@@ -147,7 +147,7 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .result-btns .btn.dark{background:var(--navy-2);color:#fff}
 
 /* ---------- game ---------- */
-.game{background:var(--sky);color:#fff}
+.game{position:absolute;inset:0;background:var(--sky);color:#fff}
 .game>*{position:absolute}
 .game-field{inset:0;pointer-events:none}
 .game-field>*{position:absolute}
@@ -208,3 +208,10 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .overlay-sub{font-size:28px;color:#fff;font-weight:800;text-shadow:2px 2px 0 var(--navy)}
 
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
+
+/* 試合ヘッダーのチーム枠 */
+.hteam{display:flex;align-items:center;gap:12px;min-width:330px}
+.hteam.home{justify-content:flex-end}
+.hteam .team-name{font-size:22px;font-weight:900;color:#fff;white-space:nowrap}
+.hteam .team-badge{flex:none}
+.chibi-batter .bat{position:absolute;left:150px;top:40px;transform-origin:50% 90%}

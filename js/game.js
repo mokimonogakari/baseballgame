@@ -25,8 +25,8 @@ const RESULT_MS = 900;
 const CHANGE_MS = 1200;
 const GAMESET_MS = 1500;
 const CPU_PITCH_DELAY_MS = 1100;
-const BATTER_LEFT_R = 400; // 右打者（三塁側）
-const BATTER_LEFT_L = 800; // 左打者（一塁側）= 鏡像
+const BATTER_LEFT_R = 370; // 右打者（三塁側）
+const BATTER_LEFT_L = 910; // 左打者（一塁側）= 鏡像
 const BATTER_TOP = 420;
 
 const REQUIRED = ['createGame', 'getBatter', 'getPitcher', 'resolvePitch', 'choosePitch', 'chooseSwing', 'isGameOver'];
@@ -177,11 +177,11 @@ export function createGameScreen(el, ctx) {
     const pitcher = engine.getPitcher(state);
     return `
 <div class="game">
-  <div class="game-field"></div>
+  <div class="game-field"><div class="gf-stand"></div><div class="gf-line"></div><div class="gf-grass"></div><div class="gf-stripe s1"></div><div class="gf-stripe s2"></div><div class="gf-mound"></div><div class="gf-dirt"></div><div class="gf-plate"></div></div>
   <header class="game-header">
-    <div class="team away"><span class="team-badge" style="background:${esc(away.color)}">${esc(away.short)}</span><span class="team-name">${esc(away.name)}</span><span class="score-num" data-score="away">0</span></div>
+    <div class="hteam away"><span class="team-badge" style="background:${esc(away.color)}">${esc(away.short)}</span><span class="team-name">${esc(away.name)}</span><span class="score-num" data-score="away">0</span></div>
     <div class="inning" data-ref="inning"></div>
-    <div class="team home"><span class="score-num" data-score="home">0</span><span class="team-name">${esc(home.name)}</span><span class="team-badge" style="background:${esc(home.color)}">${esc(home.short)}</span></div>
+    <div class="hteam home"><span class="score-num" data-score="home">0</span><span class="team-name">${esc(home.name)}</span><span class="team-badge" style="background:${esc(home.color)}">${esc(home.short)}</span></div>
     <div class="lamps">
       <div class="lamp-row"><b>B</b><span data-lamps="b">${lamps('lamp-b', 3)}</span></div>
       <div class="lamp-row"><b>S</b><span data-lamps="s">${lamps('lamp-s', 2)}</span></div>
@@ -366,7 +366,7 @@ export function createGameScreen(el, ctx) {
         dom.batterChibi.style.setProperty('--team', state.teams[bSide]?.color || '#E5484D');
         dom.batterChibi.style.left = `${lefty ? BATTER_LEFT_L : BATTER_LEFT_R}px`;
         dom.batterChibi.style.top = `${BATTER_TOP}px`;
-        dom.batterChibi.style.transform = lefty ? 'scaleX(-1)' : '';
+        dom.batterChibi.style.transform = lefty ? 'scale(-0.8, 0.8)' : 'scale(0.8)';
         const body = dom.batterChibi.querySelector('.chibi-body');
         if (body) body.textContent = batter.number;
       }
