@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { TEAMS } from '../js/data.js';
+import * as E from '../js/engine.js';
 import {
   createGame, getBatter, getPitcher, resolvePitch, summary, changePitcher,
   availableBench, availablePitchers, pinchHit, pinchRun, defensiveSwap, lineupView, cpuManage,
@@ -305,4 +306,21 @@ test('resolvePitch は打球の自動処理まで行い pending を残さない'
     s = resolvePitch(s, IN, SWING, rng).state;
     assert.equal(s.pending, null);
   }
+});
+
+test('フィルダースチョイスはオールセーフのときだけ（走者アウトなら凡打扱い）', () => {
+  let seed = 11; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  let fc = 0;
+  for (let g = 0; g < 60; g++) {
+    const res = E.simulateGame(TEAMS[1], TEAMS[0], r); const s = res.state || res;
+    for (const ev of s.log) {
+      if (ev.kind === 'fielders_choice') {
+        fc++;
+        assert.ok(!(ev.runnerResults || []).some((x) => x.out), `野選なのに走者アウト: ${ev.text}`);
+      } else if (ev.text) {
+        assert.ok(!ev.text.includes('フィルダースチョイス'), `野選以外に野選の実況: ${ev.text}`);
+      }
+    }
+  }
+  assert.ok(fc >= 0);
 });

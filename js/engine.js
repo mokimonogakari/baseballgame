@@ -1639,7 +1639,8 @@ function computePlay(s, ball, f, rng) {
   else if (batter.out) {
     if (batter.target <= 1) kind = runnerOuts.length ? 'double_play' : 'out';
     else { kind = 'hit'; bases = batter.target - 1; }
-  } else if (infieldPlay && (runnerOuts.length || (tgt && tgt !== 1))) kind = 'fielders_choice';
+  } else if (infieldPlay && runnerOuts.length) kind = 'out'; // 先行走者アウト・打者は一塁へ（日本の記録では凡打）
+  else if (infieldPlay && tgt && tgt !== 1) kind = 'fielders_choice'; // 先行走者を狙ってオールセーフ＝野選
   else if (batter.target === 4) { kind = 'hr'; bases = 4; }
   else { kind = 'hit'; bases = batter.target; }
   return {
@@ -1714,9 +1715,14 @@ function playText(s, ball, f, play, batter) {
     } else if (play.tgt === 1) {
       parts.push(`${head} ${pos}捕って一塁へ…${play.batterOut ? 'アウト！' : 'セーフ！ 内野安打！'}`);
     } else if (play.victim) {
-      parts.push(`${head} ${pos}捕って${BASE_NAMES[play.tgt]}へ…${play.victim.out ? 'フォースアウト！' : 'セーフ！'}`);
-      if (play.relay && !play.relay.out) parts.push('一塁は間に合わずセーフ。');
-      else if (!play.relay) parts.push('バッターランナーは一塁へ（フィルダースチョイス）。');
+      if (play.victim.out) {
+        const o = play.outs.find((x) => x.r === play.victim);
+        parts.push(`${head} ${pos}捕って${BASE_NAMES[play.tgt]}へ…${o && !o.force ? 'タッチアウト！' : 'フォースアウト！'}`);
+        if (play.relay && !play.relay.out) parts.push('一塁は間に合わずセーフ。');
+        else if (!play.relay) parts.push('バッターランナーは一塁へ。');
+      } else {
+        parts.push(`${head} ${pos}捕って${BASE_NAMES[play.tgt]}へ…セーフ！ フィルダースチョイス！`);
+      }
     } else {
       parts.push(`${head} ${pos}捕って${BASE_NAMES[play.tgt]}へ…オールセーフ！ フィルダースチョイス！`);
     }
