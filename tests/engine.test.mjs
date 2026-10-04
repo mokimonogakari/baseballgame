@@ -26,16 +26,26 @@ const IN = { type: 'fastball', zone: { x: 1, y: 1 }, loc: { x: 0, y: 0 } };
 const OUT = { type: 'fastball', zone: { x: 2, y: 2 }, loc: { x: 2.5, y: 2.5 } };
 const SWING = { zone: { x: 1, y: 1 }, mode: 'meet', timing: 0 };
 
-test('データ: 26人、各チーム打順9人・投手4人、能力値は1-99', () => {
+test('データ: 38人、各チーム打順9人・投手6人・控え野手5人、能力値は1-99', () => {
   assert.equal(TEAMS.length, 2);
-  assert.equal(TEAMS.reduce((n, t) => n + t.players.length, 0), 26);
+  assert.equal(TEAMS.reduce((n, t) => n + t.players.length, 0), 38);
   const ids = new Set();
   for (const t of TEAMS) {
     assert.equal(t.lineup.length, 9);
-    assert.equal(t.pitchers.length, 4);
-    assert.equal(t.players.length, 13);
-    for (const id of [...t.lineup, ...t.pitchers]) assert.ok(t.players.some((p) => p.id === id), id);
+    assert.equal(t.pitchers.length, 6);
+    assert.equal(t.bench.length, 5);
+    assert.equal(t.players.length, 19);
+    const roles = t.pitchers.map((id) => t.players.find((p) => p.id === id).pitching.role);
+    assert.deepEqual(roles, ['starter', 'starter', 'reliever', 'reliever', 'reliever', 'closer']);
+    for (const id of [...t.lineup, ...t.pitchers, ...t.bench]) assert.ok(t.players.some((p) => p.id === id), id);
     for (const id of t.pitchers) assert.ok(t.players.find((p) => p.id === id).pitching);
+    for (const id of t.bench) {
+      assert.ok(!t.lineup.includes(id) && !t.pitchers.includes(id));
+      assert.equal(t.players.find((p) => p.id === id).pitching, null);
+    }
+    const bench = t.bench.map((id) => t.players.find((p) => p.id === id));
+    assert.ok(bench.some((p) => p.speed >= 90), '代走要員');
+    assert.ok(bench.some((p) => p.positions.includes('捕')), '控え捕手');
     for (const p of t.players) {
       assert.ok(!ids.has(p.id)); ids.add(p.id);
       for (const k of ['contact', 'power', 'speed', 'arm', 'fielding', 'catching']) {
@@ -43,6 +53,7 @@ test('データ: 26人、各チーム打順9人・投手4人、能力値は1-99'
       }
       assert.ok(p.trajectory >= 1 && p.trajectory <= 4);
       assert.ok(typeof p.model === 'string' && p.model.length > 0);
+      assert.ok(Array.isArray(p.positions) && p.positions.length > 0 && p.positions[0] === p.pos, `${p.name} positions`);
       if (p.pitching) {
         assert.ok(p.pitching.control >= 1 && p.pitching.control <= 99);
         assert.ok(p.pitching.stamina >= 1 && p.pitching.stamina <= 99);
@@ -99,7 +110,8 @@ test('4ボールで四球', () => {
   let ev;
   for (let i = 0; i < 4; i++) ({ state: s, event: ev } = resolvePitch(s, OUT, null, mulberry32(i)));
   assert.equal(ev.kind, 'walk');
-  assert.deepEqual(s.bases, [true, false, false]);
+  assert.deepEqual(s.bases, [red.lineup[0], null, null]);
+  assert.deepEqual(summary(s).bases, [true, false, false]);
   assert.equal(s.balls, 0);
   assert.equal(s.stats[red.lineup[0]].bb, 1);
   assert.equal(getBatter(s).id, red.lineup[1]);
@@ -159,3 +171,6 @@ test('9回裏はホームリードなら行わない', () => {
   assert.ok(isGameOver(s));
   assert.equal(s.score.home.length, 8);
 });
+
+// 'node --test tests/' は tests/package.json の main（このファイル）だけを実行するため、追加のテストをここから読み込む
+import './subs-fielding.test.mjs';
