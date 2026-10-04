@@ -134,6 +134,7 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .mvp{left:80px;top:430px;width:560px;height:150px;background:var(--accent);border-radius:16px;display:flex;align-items:center;gap:18px;padding:12px 20px;text-align:left;box-shadow:0 5px 0 #0E1830}
 .mvp .face{width:110px;height:110px;border-radius:16px;background:var(--sky);overflow:hidden;display:flex;justify-content:center;padding-top:18px;--chibi:.7;flex:none}
 .mvp .face .chibi{height:100px;overflow:hidden}
+.mvp .face .chibi-arm{display:none}
 .mvp .tag{font-size:14px;font-weight:900;color:var(--muted);letter-spacing:3px}
 .mvp .nm{font-size:32px;font-weight:900}
 .mvp .st{font-size:18px;font-weight:800}

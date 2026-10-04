@@ -67,7 +67,7 @@ const P = (s, side, id) => s.teams[side].players.find((p) => p.id === id);
 const mockEngine = {
   lineupView(s, side) {
     const t = s.teams[side];
-    return t.lineup.map((id, i) => { const p = P(s, side, id); return { slot: i + 1, id, name: p.name, pos: t.posOf[id], isPitcher: t.posOf[id] === '投' }; });
+    return t.lineup.map((id, i) => { const p = P(s, side, id); return { slot: i, id, name: p.name, pos: t.posOf[id], isPitcher: t.posOf[id] === '投' }; });
   },
   availableBench(s, side) { const t = s.teams[side]; return t.players.filter((p) => !t.lineup.includes(p.id) && !t.used.includes(p.id) && p.pos !== '投'); },
   availablePitchers(s, side) { const t = s.teams[side]; return t.players.filter((p) => p.pitching && !t.lineup.includes(p.id) && !t.used.includes(p.id)); },

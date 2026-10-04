@@ -19,6 +19,16 @@ export function chibiHTML(color, number, scale = 1) {
   </div>`;
 }
 
+/** MVPの成績行。投手として投げていれば投球成績、それ以外は打撃成績 */
+function mvpStatLine(p, s) {
+  const outs = s.ip_outs ?? 0;
+  if (p.pitching && outs > 0) {
+    const ip = `${Math.floor(outs / 3)}${outs % 3 ? ` ${outs % 3}/3` : ''}回`;
+    return `${ip} ${s.k ?? 0}奪三振 ${s.er ?? 0}自責点`;
+  }
+  return `${s.ab ?? 0}打数 ${s.h ?? 0}安打 ${s.hr ?? 0}本塁打 ${s.rbi ?? 0}打点`;
+}
+
 const badge = (label, v) => `<span class="badge rank-${rank(v)}">${esc(label)}</span>`;
 const velScale = (kmh) => clamp(Math.round((kmh - 120) / 40 * 98 + 1), 1, 99);
 const avg = (a) => a.reduce((x, y) => x + y, 0) / a.length;
@@ -179,7 +189,7 @@ export function renderResult(el, ctx, box, state) {
     const t = away.players.some((p) => p.id === mvp.id) ? away : home;
     mvpHTML = `<div class="mvp"><div class="face">${chibiHTML(t.color, mvp.number, 0.7)}</div>
       <div><div class="tag">MVP</div><div class="nm">${esc(mvp.name)}</div>
-      <div class="st">${s.ab ?? 0}打数 ${s.h ?? 0}安打 ${s.hr ?? 0}本塁打 ${s.rbi ?? 0}打点</div></div></div>`;
+      <div class="st">${mvpStatLine(mvp, s)}</div></div></div>`;
   }
   const pn = (p) => (p ? esc(p.name) : '-');
   const pr = box.pitchers || {};
