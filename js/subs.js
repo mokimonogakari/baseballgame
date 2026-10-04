@@ -62,9 +62,10 @@ export function openSubsMenu(container, opts = {}) {
   };
   const safe = (fn, d) => { try { return fn(); } catch (e) { return d; } };
 
+  // lineupView の slot は 0 始まり（表示は +1）
   const lineup = () => safe(() => call('lineupView', state, side), null) || (team().lineup || []).map((id, i) => {
     const p = playerById(id);
-    return { slot: i + 1, id, name: p?.name ?? id, pos: p?.pos ?? '', isPitcher: p?.pos === '投' };
+    return { slot: i, id, name: p?.name ?? id, pos: p?.pos ?? '', isPitcher: p?.pos === '投' };
   });
   const bench = () => (safe(() => call('availableBench', state, side), []) || []).map(toPlayer).filter(Boolean);
   const pitchers = () => (safe(() => call('availablePitchers', state, side), []) || []).map(toPlayer).filter(Boolean);
@@ -113,7 +114,7 @@ export function openSubsMenu(container, opts = {}) {
     const lu = lineup();
     const slot = b ? lu.find((l) => l.id === b.id) : null;
     const list = bench();
-    const head = b ? `<div class="sb-current"><span class="sb-tag">現在の打者</span><b>${slot ? `${esc(slot.slot)}番 ` : ''}${esc(b.name)}</b><small>${esc(POS_NAMES[b.pos] || b.pos || '')}</small>${badge('ミート', b.contact)}${badge('パワー', b.power)}${badge('走力', b.speed)}</div>` : '';
+    const head = b ? `<div class="sb-current"><span class="sb-tag">現在の打者</span><b>${slot ? `${esc(Number(slot.slot) + 1)}番 ` : ''}${esc(b.name)}</b><small>${esc(POS_NAMES[b.pos] || b.pos || '')}</small>${badge('ミート', b.contact)}${badge('パワー', b.power)}${badge('走力', b.speed)}</div>` : '';
     const rows = list.length ? list.map((p) => itemBtn(`ph:${p.id}`, 'ph', `<span class="sb-pos">${esc(p.pos || '')}</span><span class="sb-nm">${esc(p.name)}<small>${esc(p.bats ? `${p.bats}打` : '')}</small></span>${badge('ミート', p.contact)}${badge('パワー', p.power)}${badge('走力', p.speed)}`, { data: `data-id="${esc(p.id)}"` })).join('')
       : '<div class="sb-empty">代打に出せる控え選手がいません</div>';
     return { hint: '代打で起用する選手を選んでください', html: `${head}<div class="sb-list">${rows}</div>` };
