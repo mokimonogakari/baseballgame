@@ -55,10 +55,10 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .menu-btn.primary{background:var(--accent)}
 .menu-btn:active:not([disabled]){transform:translateY(3px);box-shadow:0 2px 0 var(--navy)}
 .menu-btn[disabled],.menu-btn.is-disabled{background:#D6DEEB;color:#5B6B8A;box-shadow:none;cursor:not-allowed}
-.hero{left:540px;top:290px;z-index:2;--chibi:1.6}
+.hero{left:540px;top:310px;z-index:2;--chibi:1.6}
 .guide{right:60px;top:332px;width:300px;background:var(--navy);border-radius:16px;padding:16px 20px;color:#fff;z-index:2}
 .guide h3{margin:0 0 8px;font-size:18px;color:var(--accent)}
-.guide .row{display:flex;justify-content:space-between;font-size:16px;font-weight:700;padding:4px 0}
+.guide .row{display:flex;justify-content:space-between;align-items:center;width:auto;height:auto;margin:0;background:none;border:0;border-radius:0;font-size:16px;font-weight:700;padding:4px 0;color:#fff;text-align:left}
 .guide .row b{color:var(--accent);font-weight:900}
 .footer{left:0;bottom:0;width:100%;height:36px;background:var(--navy);color:var(--muted-light);font-size:13px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;z-index:3}
 
@@ -151,14 +151,6 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .game>*{position:absolute}
 .game-field{inset:0;pointer-events:none}
 .game-field>*{position:absolute}
-.gf-stand{left:0;top:150px;width:100%;height:60px;background:var(--navy)}
-.gf-line{left:0;top:200px;width:100%;height:12px;background:var(--accent)}
-.gf-grass{left:0;top:212px;width:100%;height:508px;background:var(--grass)}
-.gf-stripe{left:0;width:100%;height:40px;background:var(--grass-dark)}
-.gf-stripe.s1{top:260px}.gf-stripe.s2{top:340px}
-.gf-mound{left:480px;top:300px;width:320px;height:120px;border-radius:50%;background:var(--dirt)}
-.gf-dirt{left:0;top:540px;width:100%;height:180px;background:var(--dirt);border-top:4px solid #fff}
-.gf-plate{left:600px;top:640px;width:80px;height:40px;background:#fff;clip-path:polygon(0 0,100% 0,100% 55%,50% 100%,0 55%)}
 .game-header{left:0;top:0;width:100%;height:76px;background:var(--navy);border-bottom:4px solid var(--accent);display:flex;align-items:center;justify-content:space-between;padding:0 24px;z-index:5}
 .gh-side{display:flex;align-items:center;gap:12px}
 .team-badge{width:48px;height:48px;border-radius:12px;background:var(--red);border:3px solid #fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:24px;color:#fff}
@@ -172,17 +164,6 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .base{position:absolute;width:20px;height:20px;background:#34476E;border:2px solid #fff;transform:rotate(45deg)}
 .base.b2{left:20px;top:2px}.base.b1{left:38px;top:20px}.base.b3{left:2px;top:20px}
 .base.on{background:var(--accent)}
-.panel{width:272px;background:var(--navy);border-radius:16px;border:3px solid #34476E;padding:12px 14px;z-index:4;color:#fff;font-weight:700}
-.panel-left{left:20px;top:96px}.panel-right{right:20px;top:96px}
-.panel h3{margin:0 0 6px;font-size:20px;font-weight:900}
-.panel .sub{font-size:13px;color:var(--muted-light)}
-.stamina-bar{height:14px;background:#34476E;border-radius:7px;overflow:hidden;margin:4px 0 10px}
-.stamina-bar>i{display:block;height:100%;background:#43A047;border-radius:7px}
-.pitch-list{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.pitch-item{height:34px;background:#34476E;border-radius:8px;font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center;color:#fff}
-.pitch-item.selected{background:var(--accent);color:var(--navy)}
-.ability-badges{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
-.ability-badge{width:40px;height:40px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-weight:900;font-size:20px;color:#fff;background:var(--rank-G)}
 .zone{left:520px;top:404px;width:240px;height:240px;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);border:4px solid rgba(255,255,255,.85);background:rgba(28,43,75,.18);z-index:3}
 .zone-cell{border:1px solid rgba(255,255,255,.45)}
 .zone-cell.target{background:rgba(255,213,74,.35)}
@@ -215,3 +196,58 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .hteam .team-name{font-size:22px;font-weight:900;color:#fff;white-space:nowrap}
 .hteam .team-badge{flex:none}
 .chibi-batter .bat{position:absolute;left:150px;top:40px;transform-origin:50% 90%}
+
+/* ---------- game panels ---------- */
+.panel{width:288px;background:var(--navy);border-radius:16px;border:3px solid #34476E;padding:10px 12px 12px;z-index:4;color:#fff;font-weight:700;box-shadow:0 4px 0 rgba(14,24,48,.45);display:flex;flex-direction:column;gap:8px}
+.panel-left{left:14px;top:92px}.panel-right{right:14px;top:92px}
+.panel-head{display:flex;align-items:center;gap:8px;min-width:0}
+.role-chip{flex:none;background:var(--accent);color:var(--navy);font-size:13px;font-weight:900;border-radius:6px;padding:3px 8px;line-height:1.1}
+.role-chip.is-bat{background:var(--red);color:#fff}
+.panel-name{flex:1;min-width:0;font-size:20px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
+.hand-chip{flex:none;background:#34476E;color:#fff;font-size:13px;font-weight:800;border-radius:999px;padding:3px 10px;line-height:1.1}
+.velo-row{display:flex;align-items:baseline;gap:8px;background:#34476E;border-radius:10px;padding:4px 12px}
+.velo-row .lbl,.stamina-row .lbl,.panel .lbl{font-size:12px;color:var(--muted-light);font-weight:800}
+.velo-row b{font-size:30px;font-weight:900;color:var(--accent);line-height:1.05;letter-spacing:.5px}
+.velo-row small{font-size:13px;color:var(--accent);font-weight:800}
+.stamina-row{display:flex;align-items:center;gap:8px}
+.stamina-bar{flex:1;height:12px;background:#34476E;border-radius:6px;overflow:hidden}
+.stamina-bar>i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#43A047,#7BD36F);border-radius:6px;transition:width .3s}
+.stamina-bar>i.low{background:linear-gradient(90deg,#E5484D,#FF8A65)}
+.stamina-row b{flex:none;width:30px;text-align:right;font-size:15px;font-weight:900}
+.pitch-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.pitch-item{height:30px;min-width:0;background:#34476E;border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:2px;padding:0 6px;color:#fff;white-space:nowrap;overflow:hidden}
+.pitch-item span{font-size:12px;font-weight:800;letter-spacing:-.4px;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pitch-item b{flex:none;font-size:9px;letter-spacing:-1.5px;color:var(--accent);font-weight:900}
+.pitch-item.selected{background:var(--accent);color:var(--navy);box-shadow:0 0 0 2px #fff}
+.pitch-item.selected b{color:var(--red)}
+.pitch-count{font-size:13px;color:var(--muted-light);font-weight:800;display:flex;justify-content:space-between}
+.pitch-count b{color:#fff;font-size:15px;font-weight:900}
+.order-line{font-size:14px;font-weight:800;color:var(--muted-light)}
+.order-line b{color:var(--accent);font-size:16px;font-weight:900;margin-right:2px}
+.abilities{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.ability{background:#34476E;border-radius:10px;padding:5px 0 4px;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0}
+.ability-label{font-size:11px;font-weight:800;color:var(--muted-light);white-space:nowrap}
+.ability-badge{width:40px;height:40px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-weight:900;font-size:22px;color:#fff;background:var(--rank-G);box-shadow:inset 0 -3px 0 rgba(0,0,0,.18)}
+.ability-value{font-size:13px;font-weight:900;color:#fff;line-height:1}
+.today-title{font-size:12px;color:var(--muted-light);font-weight:800;margin-bottom:4px}
+.today-chips{display:flex;flex-wrap:wrap;gap:4px}
+.today-chips .chip{font-size:12px;padding:2px 8px}
+
+/* ---------- game effects ---------- */
+.ghost{width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;border:3px dashed rgba(255,255,255,.95);box-shadow:0 0 0 2px rgba(28,43,75,.6);background:rgba(255,213,74,.25);z-index:4;pointer-events:none;opacity:0;transition:opacity .15s}
+.ghost.show{opacity:1}
+.ball.flying{z-index:7}
+.ball-shadow{width:22px;height:8px;margin:-4px 0 0 -11px;border-radius:50%;background:rgba(0,0,0,.25);z-index:3;opacity:0;pointer-events:none}
+.spark{width:120px;height:120px;margin:-60px 0 0 -60px;z-index:6;pointer-events:none;opacity:0;
+  background:radial-gradient(circle,#fff 0 10%,rgba(255,240,150,.95) 14%,rgba(255,213,74,.6) 26%,transparent 44%),
+  conic-gradient(from 0deg,transparent 0 6%,#FFD54A 6% 9%,transparent 9% 18.5%,#fff 18.5% 21.5%,transparent 21.5% 31%,#FFD54A 31% 34%,transparent 34% 43.5%,#fff 43.5% 46.5%,transparent 46.5% 56%,#FFD54A 56% 59%,transparent 59% 68.5%,#fff 68.5% 71.5%,transparent 71.5% 81%,#FFD54A 81% 84%,transparent 84% 93.5%,#fff 93.5% 96.5%,transparent 96.5%);
+  -webkit-mask:radial-gradient(circle,#000 0 48%,transparent 50%);mask:radial-gradient(circle,#000 0 48%,transparent 50%);border-radius:50%}
+.spark.go{animation:spark-pop .38s ease-out}
+@keyframes spark-pop{0%{opacity:1;transform:scale(.3) rotate(0)}60%{opacity:1}100%{opacity:0;transform:scale(1.25) rotate(25deg)}}
+.cursor.miss{animation:cursor-miss .45s ease-out}
+@keyframes cursor-miss{0%,60%{border-color:var(--red);background:rgba(229,72,77,.35)}100%{border-color:var(--accent);background:transparent}}
+.game.shake{animation:game-shake .45s linear}
+@keyframes game-shake{0%,100%{transform:translate(0,0)}15%{transform:translate(-7px,3px)}30%{transform:translate(6px,-4px)}45%{transform:translate(-5px,-2px)}60%{transform:translate(4px,3px)}75%{transform:translate(-2px,-1px)}}
+
+/* 左打者は全体を鏡像にするので背番号だけ戻す */
+.chibi-batter.lefty .chibi-body{transform:scaleX(-1)}

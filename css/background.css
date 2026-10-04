@@ -1,0 +1,84 @@
+/* =========================================================
+   背景（スタジアム）: レターボックス / タイトル / 試合画面
+   すべて CSS（グラデーション + data URI SVG）で描画
+   ========================================================= */
+
+/* ---------- letterbox（#stage の外側） ---------- */
+html,body{background-color:#0B1428}
+body{
+  background:
+    repeating-linear-gradient(135deg,rgba(255,255,255,.035) 0 2px,transparent 2px 26px),
+    repeating-linear-gradient(45deg,rgba(255,213,74,.025) 0 1px,transparent 1px 52px),
+    radial-gradient(ellipse at 50% 45%,#1B2C52 0%,#101C38 55%,#0A1226 100%);
+  background-color:#0B1428;
+}
+#stage{box-shadow:0 0 0 3px rgba(255,213,74,.18),0 18px 60px rgba(0,0,0,.55)}
+
+/* ---------- title ---------- */
+.title{background:linear-gradient(180deg,#3F92EC 0%,#6FB4F7 34%,#A9D8FF 52%,#D4EEFF 60%,#D4EEFF 100%)}
+.title::before{
+  content:"";position:absolute;left:0;top:226px;width:1280px;height:100px;pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1280' height='100' viewBox='0 0 1280 100'%3E%3Cg id='t'%3E%3Crect x='117' y='30' width='7' height='70' fill='%23E3EAF5' stroke='%231C2B4B' stroke-width='2'/%3E%3Cpath d='M118 50h5M118 70h5M118 90h5' stroke='%231C2B4B' stroke-width='2'/%3E%3Crect x='92' y='6' width='56' height='28' rx='5' fill='%231C2B4B'/%3E%3Cg fill='%23FFF6C9'%3E%3Ccircle cx='102' cy='15' r='4'/%3E%3Ccircle cx='114' cy='15' r='4'/%3E%3Ccircle cx='126' cy='15' r='4'/%3E%3Ccircle cx='138' cy='15' r='4'/%3E%3Ccircle cx='102' cy='26' r='4'/%3E%3Ccircle cx='114' cy='26' r='4'/%3E%3Ccircle cx='126' cy='26' r='4'/%3E%3Ccircle cx='138' cy='26' r='4'/%3E%3C/g%3E%3C/g%3E%3Cuse href='%23t' x='240'/%3E%3Cuse href='%23t' x='800'/%3E%3Cuse href='%23t' x='1040'/%3E%3C/svg%3E") no-repeat 0 0/1280px 100px;
+}
+.cloud{background:#fff;border-radius:60px;box-shadow:0 6px 0 rgba(28,43,75,.08)}
+.cloud::before,.cloud::after{content:"";position:absolute;background:#fff;border-radius:50%}
+.cloud::before{width:46%;height:150%;left:16%;top:-60%}
+.cloud::after{width:32%;height:120%;left:52%;top:-40%}
+.cloud.c3{top:44px;left:700px;width:110px;height:34px;opacity:.9}
+
+/* スタンド（タイトル） */
+.title .stand{top:322px;height:130px;background:
+  radial-gradient(circle at 3px 3px,#FFD54A 2.2px,transparent 2.8px) 0 0/16px 11px,
+  radial-gradient(circle at 3px 3px,#FF8FA8 2.2px,transparent 2.8px) 8px 5px/16px 11px,
+  radial-gradient(circle at 3px 3px,#FFFFFF 2px,transparent 2.6px) 4px 2px/22px 11px,
+  radial-gradient(circle at 3px 3px,#8FD3FF 2px,transparent 2.6px) 13px 7px/26px 11px,
+  radial-gradient(circle at 3px 3px,#E5484D 2px,transparent 2.6px) 19px 3px/30px 11px,
+  linear-gradient(180deg,transparent 0 40px,#14203C 40px 45px,transparent 45px 88px,#14203C 88px 93px,transparent 93px),
+  linear-gradient(180deg,#22365F 0%,#2B4577 55%,#34528A 100%)}
+.title .stand::before{content:"";position:absolute;left:0;right:0;top:-14px;height:16px;background:#16233F;border-bottom:3px solid #fff;box-shadow:0 3px 0 rgba(0,0,0,.2)}
+.title .stand-line{top:452px;height:6px;background:var(--accent)}
+.title .stand-line::before,.title .stand-line::after{position:absolute;top:10px;height:22px;display:flex;align-items:center;padding:0 10px;border:2px solid var(--navy);border-radius:5px;font-size:12px;font-weight:900;white-space:nowrap;line-height:1}
+.title .stand-line::before{content:"ドキドキ食堂";left:462px;background:#fff;color:var(--red)}
+.title .stand-line::after{content:"ベースボールソーダ";left:772px;background:#FFD54A;color:var(--navy)}
+.title .stand-line{z-index:1}
+/* フェンス + 芝 */
+.title .grass{top:458px;height:262px;background:
+  linear-gradient(180deg,rgba(0,0,0,.14),transparent 14px) 0 36px/100% 100% no-repeat,
+  linear-gradient(180deg,#56B95B 0 36px,#47A54D 36px 66px,#56B95B 66px 104px,#47A54D 104px 152px,#56B95B 152px 212px,#47A54D 212px 262px)}
+.title .grass::before{content:"";position:absolute;left:0;right:0;top:0;height:36px;background:repeating-linear-gradient(90deg,#2E9E58 0 62px,#24854A 62px 64px);box-shadow:inset 0 -4px 0 rgba(0,0,0,.18)}
+.title .grass-stripe{display:none}
+.title .dirt{background:radial-gradient(ellipse at 50% 30%,#D4A26C 0%,#C9955F 60%,#BD8853 100%);box-shadow:inset 0 6px 0 rgba(255,255,255,.18)}
+.title .dirt::before{content:"";position:absolute;left:370px;top:44px;width:60px;height:30px;background:#fff;clip-path:polygon(0 0,100% 0,100% 55%,50% 100%,0 55%)}
+
+/* ---------- game field ---------- */
+.gf-sky{left:0;top:76px;width:1280px;height:72px;background:
+  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1280' height='72' viewBox='0 0 1280 72'%3E%3Cg fill='%23fff'%3E%3Cellipse cx='420' cy='34' rx='38' ry='11'/%3E%3Ccircle cx='408' cy='27' r='12'/%3E%3Ccircle cx='428' cy='24' r='9'/%3E%3Cellipse cx='858' cy='28' rx='44' ry='12'/%3E%3Ccircle cx='846' cy='20' r='13'/%3E%3Ccircle cx='870' cy='19' r='10'/%3E%3Cellipse cx='1110' cy='40' rx='34' ry='9' opacity='.8'/%3E%3Cellipse cx='160' cy='26' rx='40' ry='10' opacity='.85'/%3E%3C/g%3E%3Cg id='t'%3E%3Crect x='337' y='30' width='6' height='42' fill='%23E3EAF5' stroke='%231C2B4B' stroke-width='2'/%3E%3Cpath d='M338 46h4' stroke='%231C2B4B' stroke-width='2'/%3E%3Crect x='316' y='10' width='48' height='24' rx='4' fill='%231C2B4B'/%3E%3Cg fill='%23FFF6C9'%3E%3Ccircle cx='325' cy='17' r='3.4'/%3E%3Ccircle cx='335' cy='17' r='3.4'/%3E%3Ccircle cx='345' cy='17' r='3.4'/%3E%3Ccircle cx='355' cy='17' r='3.4'/%3E%3Ccircle cx='325' cy='27' r='3.4'/%3E%3Ccircle cx='335' cy='27' r='3.4'/%3E%3Ccircle cx='345' cy='27' r='3.4'/%3E%3Ccircle cx='355' cy='27' r='3.4'/%3E%3C/g%3E%3C/g%3E%3Cuse href='%23t' x='600'/%3E%3C/svg%3E") no-repeat 0 0/1280px 72px,
+  linear-gradient(180deg,#5AA8F2 0%,#9AD0FF 100%)}
+.gf-stand{left:0;top:146px;width:1280px;height:56px;background:
+  radial-gradient(circle at 3px 3px,#FFD54A 2px,transparent 2.6px) 0 0/15px 10px,
+  radial-gradient(circle at 3px 3px,#FF8FA8 2px,transparent 2.6px) 7px 5px/15px 10px,
+  radial-gradient(circle at 3px 3px,#FFFFFF 1.8px,transparent 2.4px) 4px 2px/21px 10px,
+  radial-gradient(circle at 3px 3px,#8FD3FF 1.8px,transparent 2.4px) 12px 7px/25px 10px,
+  radial-gradient(circle at 3px 3px,#E5484D 1.8px,transparent 2.4px) 18px 3px/29px 10px,
+  linear-gradient(180deg,transparent 0 24px,#14203C 24px 28px,transparent 28px),
+  linear-gradient(180deg,#22365F 0%,#2B4577 60%,#34528A 100%)}
+.gf-stand::before{content:"";position:absolute;left:0;right:0;top:-8px;height:10px;background:#16233F;border-bottom:2px solid #fff}
+.gf-vision{left:556px;top:84px;width:168px;height:52px;background:#16233F;border:3px solid #34476E;border-radius:8px;box-shadow:0 3px 0 rgba(0,0,0,.25);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;overflow:visible}
+.gf-vision::before{content:"";position:absolute;inset:4px;border-radius:4px;background:linear-gradient(180deg,#24427A,#1B3360);z-index:0}
+.gf-vision::after{content:"";position:absolute;left:50%;top:100%;width:70px;margin-left:-35px;height:10px;background:#16233F}
+.gf-vision b,.gf-vision span{position:relative;z-index:1}
+.gf-vision b{font-size:17px;font-weight:900;color:var(--accent);letter-spacing:1px;text-shadow:0 0 6px rgba(255,213,74,.45)}
+.gf-vision span{font-size:10px;font-weight:800;color:#fff;letter-spacing:5px;margin-top:3px;padding-left:5px}
+.gf-fence{left:0;top:200px;width:1280px;height:36px;border-top:6px solid var(--accent);background:repeating-linear-gradient(90deg,#2E9E58 0 62px,#24854A 62px 64px);box-shadow:inset 0 -4px 0 rgba(0,0,0,.18);display:flex;align-items:center;justify-content:space-between;padding:0 330px 4px}
+.gf-fence span{height:20px;display:flex;align-items:center;padding:0 10px;border:2px solid var(--navy);border-radius:5px;font-size:11px;font-weight:900;white-space:nowrap;line-height:1;background:#fff;color:var(--red)}
+.gf-fence span:nth-child(2){background:var(--accent);color:var(--navy)}
+.gf-fence span:nth-child(3){background:#E5484D;color:#fff}
+.gf-grass{left:0;top:236px;width:1280px;height:484px;background:
+  linear-gradient(180deg,rgba(0,0,0,.14),transparent 12px) no-repeat,
+  linear-gradient(180deg,#56B95B 0 20px,#47A54D 20px 44px,#56B95B 44px 74px,#47A54D 74px 112px,#56B95B 112px 160px,#47A54D 160px 222px,#56B95B 222px 300px,#47A54D 300px 400px,#56B95B 400px)}
+.gf-infield{left:236px;top:256px;width:808px;height:146px;border-radius:50%;border:16px solid #C9955F;box-shadow:inset 0 0 0 2px rgba(255,255,255,.18)}
+.gf-mound{left:500px;top:290px;width:280px;height:96px;border-radius:50%;background:radial-gradient(ellipse at 50% 40%,#D6A770 0%,#C9955F 62%,#B98450 100%)}
+.gf-mound::after{content:"";position:absolute;left:122px;top:34px;width:36px;height:7px;border-radius:2px;background:#fff}
+.gf-dirt{left:-120px;top:546px;width:1520px;height:420px;border-radius:50%;background:radial-gradient(ellipse at 50% 20%,#D4A26C 0%,#C9955F 45%,#BD8853 100%)}
+.gf-lines{inset:0;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1280' height='720' viewBox='0 0 1280 720'%3E%3Cg stroke='%23fff' stroke-width='5' stroke-linecap='round' opacity='.92'%3E%3Cpath d='M598 666L-40 524'/%3E%3Cpath d='M682 666L1320 524'/%3E%3C/g%3E%3C/svg%3E") no-repeat 0 0/1280px 720px}
+.gf-plate{left:600px;top:640px;width:80px;height:40px;background:#fff;clip-path:polygon(0 0,100% 0,100% 55%,50% 100%,0 55%)}
