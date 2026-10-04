@@ -48,7 +48,7 @@ export function renderTitle(el, ctx) {
       <button class="menu-btn primary" data-act="game">たいせん（1試合）</button>
       <button class="menu-btn" data-act="team">チーム・選手</button>
       <button class="menu-btn is-disabled" disabled>ペナント（準備中）</button>
-      <button class="menu-btn is-disabled" disabled>せってい</button>
+      <button class="menu-btn" data-act="settings">せってい</button>
     </div>
     <div class="hero">${chibiHTML(team.color, team.number ?? 1, 1.6)}</div>
     <div class="guide">
@@ -63,6 +63,7 @@ export function renderTitle(el, ctx) {
   </div>`;
   el.querySelector('[data-act="game"]').onclick = () => ctx.go('game');
   el.querySelector('[data-act="team"]').onclick = () => ctx.go('team');
+  el.querySelector('[data-act="settings"]').onclick = () => ctx.go('settings');
 }
 
 /* ---------------- Team ---------------- */
@@ -210,4 +211,33 @@ export function renderResult(el, ctx, box, state) {
   el.querySelector('[data-act="again"]').onclick = () => ctx.go('game');
   el.querySelector('[data-act="team"]').onclick = () => ctx.go('team');
   el.querySelector('[data-act="title"]').onclick = () => ctx.go('title');
+}
+
+/* ---------------- Settings ---------------- */
+const SET_GROUPS = [
+  { key: 'innings', label: 'イニング', opts: [[3, '3'], [6, '6'], [9, '9']] },
+  { key: 'difficulty', label: '難易度', opts: [['easy', 'かんたん'], ['normal', 'ふつう'], ['hard', 'むずかしい']] },
+  { key: 'sound', label: 'サウンド', opts: [[true, 'オン'], [false, 'オフ']] },
+];
+const DIFF_HELP = { easy: '球が遅く、通過位置が見える', normal: 'ふつう', hard: '球が速い' };
+
+export function renderSettings(el, ctx) {
+  const cur = ctx.settings || {};
+  const groups = SET_GROUPS.map((g) => `<div class="set-group"><h3>${g.label}</h3><div class="seg">${g.opts.map(([v, l]) =>
+    `<button class="seg-btn${cur[g.key] === v ? ' selected' : ''}" data-key="${g.key}" data-val="${esc(v)}">${l}</button>`).join('')}</div>
+    ${g.key === 'difficulty' ? `<p class="set-help">${esc(DIFF_HELP[cur.difficulty] || '')}</p>` : ''}</div>`).join('');
+  el.innerHTML = `<div class="settings" style="position:absolute;inset:0">
+    <div class="settings-header"><button class="back-btn" data-act="back">もどる</button><h2>せってい</h2></div>
+    <div class="settings-body">${groups}<button class="set-test" data-act="test">テスト再生</button></div>
+  </div>`;
+  el.querySelector('[data-act="back"]').onclick = () => ctx.go('title');
+  el.querySelector('[data-act="test"]').onclick = () => ctx.sound && ctx.sound.play('hit');
+  el.querySelectorAll('.seg-btn').forEach((b) => (b.onclick = () => {
+    const key = b.dataset.key;
+    const raw = b.dataset.val;
+    const val = key === 'innings' ? Number(raw) : key === 'sound' ? raw === 'true' : raw;
+    ctx.saveSettings({ [key]: val });
+    renderSettings(el, ctx);
+    if (key === 'sound' && val) ctx.sound.play('select');
+  }));
 }
