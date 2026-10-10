@@ -3,7 +3,9 @@
  * 描画・入力・投球アニメーションを担当。試合ロジックは engine.js に委譲する。
  *
  * export function createGameScreen(el, ctx)
- *   → { start(), handleKey(key), handleKeyUp(key), isCapturingEsc(), dragCursor(dx, dy), destroy() }
+ *   → { start(), handleKey(key), handleKeyUp(key), isCapturingEsc(), dragCursor(dx, dy), destroy(),
+ *       タッチ用: touchInfo(), setSwingMode(mode), touchZoneDown(sx, sy), touchZoneTap(sx, sy, at), touchZoneCancel(), tapPitch(i, dir) }
+ *   handleKey('swing') = タッチの「スイング」（選んだ打ち方で振る。打席以外では 'z' と同じ）
  *   key: 'up'|'down'|'left'|'right'|'z'|'x'|'enter'|'esc'
  *   ctx: { teams, userTeamId, go(name, payload), onGameOver(state),
  *          settings?: { innings:3|6|9, difficulty:'easy'|'normal'|'hard', sound:boolean },
@@ -75,6 +77,9 @@ const WINDUP_R0 = 3.2;           // 縮むリングの初期半径（制球リ�
 const NICE_TOL = 0.38;           // ナイスピッチの許容（制球リング比）
 const NICE_SHRINK = 0.6;         // ナイスピッチ時の制球リングの縮小率
 const RELEASE_MS = 170;          // 2度目の押下 → リリースまでの間（判定を見せる）
+const ZONE_TAP_PAD = 0.6;        // タップでスイング: ゾーンの外側の受付幅（セル）
+const TAP_HOLD_MS = 350;         // ゾーンに指を置いている間、見送り判定を待つ上限
+const SWING_MODES = ['meet', 'power', 'bunt'];
 
 /** エンジン／データの任意エクスポート（未実装なら undefined） */
 const opt = (name) => engine[name] ?? data[name];
@@ -400,6 +405,8 @@ export function createGameScreen(el, ctx) {
   let pitchIdx = 0;              // ユーザー投手の球種インデックス
   let pitchStep = 'select';      // ユーザー投球: 'select'（球種パネル）| 'aim'（コース）
   let buntStance = false;        // バントの構え
+  let swingPref = 'meet';        // タッチで選んだ打ち方（'meet' | 'power' | 'bunt'）。キーボードでは常に 'meet'
+  let prefBatterId = null;       // バントを選んだ打者（打者が変わったらミートに戻す）
   let powerFlashUntil = 0;       // 強振カーソルを見せる期限
   let steal = null;              // 盗塁の企図 { baseIndex, from, to }
   const held = new Set();        // 押し続けている矢印
@@ -426,6 +433,8 @@ export function createGameScreen(el, ctx) {
   let logSeen = 0;               // 表示済みの state.log の長さ（交代イベント検出用）
 
   /** サウンド呼び出し（ctx.sound 未定義・未知の名前でも安全） */
+  /** タッチ端末（touch.js が body.touch を付ける）。実況のヒントをタッチ向けにする */
+  const touchUI = () => typeof document !== 'undefined' && !!document.body?.classList?.contains('touch');
   const play = (name) => { try { ctx.sound?.play?.(name); } catch (e) { /* ignore */ } };
   /** BGM を一時的に下げる（ctx.music 未定義でも安全） */
   const duckMusic = (ms) => {
@@ -876,9 +885,9 @@ export function createGameScreen(el, ctx) {
     dom.dial.innerHTML = '<div class="dial-title">球種</div><div class="dial-grid">' + DIAL.map((d) => {
       const items = list.map((p, i) => ({ p, i })).filter(({ p }) => p.dir === d);
       const on = cur && cur.dir === d;
-      const inner = items.map(({ p, i }) => `<div class="dial-pitch${i === pitchIdx ? ' selected' : ''}"><span class="dp-name">${esc(p.name)}</span>${p.type === 'fastball' ? `<span class="dp-velo">${esc(pitcher?.pitching?.velocity ?? '')}km</span>` : levelBars(p.level)}</div>`).join('');
-      return `<div class="dial-slot${items.length ? '' : ' empty'}${on ? ' on' : ''}${d === '●' ? ' center' : ''}"><b class="dial-arrow">${d === '●' ? '' : d}</b>${inner}</div>`;
-    }).join('') + '</div><div class="dial-hint">矢印で選ぶ（↑:ストレート）　Z/X:決定</div>';
+      const inner = items.map(({ p, i }) => `<div class="dial-pitch${i === pitchIdx ? ' selected' : ''}" data-pitch="${i}"><span class="dp-name">${esc(p.name)}</span>${p.type === 'fastball' ? `<span class="dp-velo">${esc(pitcher?.pitching?.velocity ?? '')}km</span>` : levelBars(p.level)}</div>`).join('');
+      return `<div class="dial-slot${items.length ? '' : ' empty'}${on ? ' on' : ''}${d === '●' ? ' center' : ''}" data-dir="${d}"><b class="dial-arrow">${d === '●' ? '' : d}</b>${inner}</div>`;
+    }).join('') + '</div><div class="dial-hint">矢印で選ぶ（↑:ストレート）　Z/X:決定</div><div class="dial-hint-touch">タップで選ぶ → もう一度タップか「決定」</div>';
   }
 
   /** ミートカーソル・投球カーソルの位置と大きさ（毎フレーム） */
@@ -889,7 +898,7 @@ export function createGameScreen(el, ctx) {
     if (dom.cursor) {
       dom.cursor.style.display = showCursor ? '' : 'none';
       if (showCursor) {
-        const mode = buntStance ? 'bunt' : now() < powerFlashUntil ? 'power' : 'meet';
+        const mode = buntStance ? 'bunt' : (now() < powerFlashUntil || swingPref === 'power') ? 'power' : 'meet';
         const c = cursorSize(mode);
         dom.cursor.style.left = `${(ZONE_CX + cursor.x * CELL).toFixed(1)}px`;
         dom.cursor.style.top = `${(ZONE_CY + cursor.y * CELL).toFixed(1)}px`;
@@ -1025,6 +1034,7 @@ export function createGameScreen(el, ctx) {
   function setBuntStance(on) {
     if (buntStance === !!on) return;
     buntStance = !!on;
+    if (!buntStance && swingPref === 'bunt') swingPref = 'meet'; // C でバントをやめた → タッチの選択もミートへ
     setBuntPose(buntStance);
     if (buntStance) play('select');
     render();
@@ -1039,6 +1049,10 @@ export function createGameScreen(el, ctx) {
 
   // ---------- flow ----------
   function readyHint() {
+    if (touchUI()) {
+      if (userBatting()) return 'タップ:ゾーンでスイング・ドラッグでカーソル';
+      return pitchStep === 'aim' ? 'タップでコース（ゾーン外も可）→ 投げる' : 'タップで球種 → もう一度タップで決定';
+    }
     if (userBatting()) return '矢印:カーソル Z:ミート X:強振 C:バント S:盗塁 Enter:見送り';
     return pitchStep === 'aim'
       ? '矢印:コース（ゾーン外も可）  Z:投球→Zでナイスピッチ  X:球種'
@@ -1057,8 +1071,13 @@ export function createGameScreen(el, ctx) {
     dialKey = '';
     if (buntStance) { buntStance = false; setBuntPose(false); }
     else if (dom.batterChibi?.classList.contains('bunting')) setBuntPose(false);
+    // タッチでバントを選んでいたら同じ打者の間は構えを続ける（打者が変わったらミートへ）
+    if (swingPref === 'bunt') {
+      if (userBatting() && engine.getBatter(state)?.id === prefBatterId) { buntStance = true; setBuntPose(true); }
+      else swingPref = 'meet';
+    }
     if (steal) clearSteal();
-    if (/^(矢印|←→↑↓)/.test(tickerText)) tickerText = readyHint();
+    if (/^(矢印|←→↑↓|タップ)/.test(tickerText)) tickerText = readyHint();
     render();
     scheduleAutoPitch();
   }
@@ -1221,21 +1240,30 @@ export function createGameScreen(el, ctx) {
       // 到着後 TAKE_GRACE_MS までスイングを受け付ける
       later(() => {
         if (phase !== 'pitching' || !flight) return;
-        if (!flight.swung) finishPitch(pitch, null);
+        if (flight.swung) return;
+        // ゾーンに指を置いたまま（タップでスイングの途中）なら少しだけ見送り判定を待つ
+        if (flight.hold && now() - flight.hold < TAP_HOLD_MS) {
+          flight.takeDue = true;
+          const f = flight;
+          later(() => { if (phase === 'pitching' && flight === f && !f.swung) { f.hold = 0; finishPitch(pitch, null); } }, TAP_HOLD_MS);
+          return;
+        }
+        finishPitch(pitch, null);
       }, TAKE_GRACE_MS);
     });
     flight.take = !!take;
   }
 
-  function userSwing(mode) {
-    if (!flight || flight.swung || flight.take) return;
-    const t = now();
+  /** スイング。at = 入力の時刻（タップの指が触れた時刻。省略時は今） */
+  function userSwing(mode, at) {
+    if (phase !== 'pitching' || !flight || flight.swung || flight.take) return;
+    const t = Number.isFinite(at) ? Math.min(at, now()) : now();
     if (t > flight.arrival + TAKE_GRACE_MS) return;
     flight.swung = true;
     if (mode === 'bunt') buntPoke();
     else {
       if (buntStance) { buntStance = false; setBuntPose(false); }
-      if (mode === 'power') powerFlashUntil = t + POWER_FLASH_MS;
+      if (mode === 'power') powerFlashUntil = now() + POWER_FLASH_MS;
       play('swing');
       swingAnim(mode);
     }
@@ -1643,7 +1671,7 @@ export function createGameScreen(el, ctx) {
     windup = { start: now(), pressedAt: 0, nice: false };
     held.clear();
     play('select');
-    tickerText = 'もう一度 Z！ リングが重なった瞬間でナイスピッチ';
+    tickerText = touchUI() ? 'もう一度「投げる」！ リングが重なった瞬間でナイスピッチ' : 'もう一度 Z！ リングが重なった瞬間でナイスピッチ';
     render();
   }
   function secondPress() {
@@ -1666,6 +1694,7 @@ export function createGameScreen(el, ctx) {
   // ---------- input ----------
   function handleKey(key) {
     if (destroyed || !state) return;
+    if (key === 'swing' && (subsMenu || fieldView || !userBatting())) key = 'z'; // タッチの大ボタン: 打席以外は Z と同じ
     if (subsMenu) { subsMenu.handleKey(key); return; }
     if (fieldView) { fieldView.handleKey(key, true); return; }
     if (phase === 'over' || phase === 'idle') return;
@@ -1686,6 +1715,12 @@ export function createGameScreen(el, ctx) {
       }
       if (key === 'z') {
         if (phase === 'pitching') userSwing(buntStance ? 'bunt' : 'meet');
+        return;
+      }
+      if (key === 'swing') { // タッチ: 選んだ打ち方で振る
+        const m = currentSwingMode();
+        if (phase === 'pitching') userSwing(m);
+        else if (m === 'power') { powerFlashUntil = now() + POWER_FLASH_MS; renderControls(); }
         return;
       }
       if (key === 'x') {
@@ -1736,6 +1771,7 @@ export function createGameScreen(el, ctx) {
   /** キーを離した（カーソル移動の停止・守備ビューの移動キー用） */
   function handleKeyUp(key) {
     if (destroyed) return;
+    if (key === 'swing') key = 'z';
     held.delete(key);
     if (fieldView && !subsMenu) fieldView.handleKey(key, false);
   }
@@ -1766,6 +1802,127 @@ export function createGameScreen(el, ctx) {
     return false;
   }
 
+  // ---------- タッチ（touch.js から） ----------
+  /** 今の打ち方（バントの構え優先） */
+  function currentSwingMode() { return buntStance ? 'bunt' : swingPref === 'bunt' ? 'meet' : swingPref; }
+
+  /** タッチの画面状態: step = 'bat' | 'select' | 'aim' | 'windup' | ''（それ以外） */
+  function touchInfo() {
+    if (destroyed || !state || subsMenu || fieldView) return { step: '', swingMode: 'meet', canBunt: false };
+    const batting = userBatting();
+    let step = '';
+    if (batting) step = phase === 'ready' || phase === 'pitching' ? 'bat' : '';
+    else if (phase === 'ready') step = pitchStep;
+    const canBunt = batting && (phase === 'ready' || (phase === 'pitching' && !!flight && !flight.swung && !flight.take));
+    return { step, swingMode: currentSwingMode(), canBunt };
+  }
+
+  /** タッチの打ち方スイッチ（ミート / 強振 / バント） */
+  function setSwingMode(mode) {
+    if (destroyed || !state || subsMenu || fieldView || !SWING_MODES.includes(mode) || !userBatting()) return false;
+    if (phase !== 'ready' && phase !== 'pitching') return false;
+    if (flight?.swung) return false;
+    if (mode === 'bunt') {
+      if (phase === 'pitching' && (!flight || flight.take)) return false;
+      swingPref = 'bunt';
+      prefBatterId = engine.getBatter(state)?.id ?? null;
+      if (!buntStance) setBuntStance(true);
+    } else {
+      swingPref = mode;
+      if (buntStance) setBuntStance(false);
+      if (mode === 'power') powerFlashUntil = now() + POWER_FLASH_MS;
+      play('select');
+    }
+    render();
+    return true;
+  }
+
+  /** ステージ座標 → セル単位（ゾーン中心 0） */
+  const stageToCell = (sx, sy) => ({ x: (sx - ZONE_CX) / CELL, y: (sy - ZONE_CY) / CELL });
+  const canMoveCursor = () => (phase === 'ready' || phase === 'pitching') && !flight?.swung;
+
+  /** ゾーン付近に指が触れた（ステージ座標）。タップとして扱う場所なら true。投球中は見送り判定を少し待つ */
+  function touchZoneDown(sx, sy) {
+    if (destroyed || !state || subsMenu || fieldView || !Number.isFinite(sx) || !Number.isFinite(sy)) return false;
+    const p = stageToCell(sx, sy);
+    if (userBatting()) {
+      const lim = 1.5 + ZONE_TAP_PAD;
+      if (!canMoveCursor() || Math.abs(p.x) > lim || Math.abs(p.y) > lim) return false;
+      if (phase === 'pitching' && flight && !flight.take) flight.hold = now();
+      return true;
+    }
+    if (phase === 'ready' && pitchStep === 'aim') {
+      const lim = AIM_LIMIT + 0.3;
+      return Math.abs(p.x) <= lim && Math.abs(p.y) <= lim;
+    }
+    return false;
+  }
+
+  /** 見送り判定の保留を解く（保留中に判定の時刻を過ぎていたら見送り） */
+  function releaseHold() {
+    const f = flight;
+    if (!f || !f.hold) return;
+    f.hold = 0;
+    if (f.takeDue && !f.swung && phase === 'pitching') finishPitch(f.pitch, null);
+  }
+  function touchZoneCancel() { releaseHold(); }
+
+  /**
+   * ゾーンをタップした（動かさずに離した）。sx/sy はステージ座標、at は指が触れた時刻（performance.now 基準）。
+   * 打席: カーソルをその位置へ。リリース後なら選んだ打ち方でスイング（タイミングは at）。投球: 狙いをその位置へ。
+   * 戻り値 'swing' | 'move' | 'aim' | null
+   */
+  function touchZoneTap(sx, sy, at) {
+    if (destroyed || !state || subsMenu || fieldView || !Number.isFinite(sx) || !Number.isFinite(sy)) { releaseHold(); return null; }
+    const p = stageToCell(sx, sy);
+    if (userBatting()) {
+      if (!canMoveCursor()) { releaseHold(); return null; }
+      cursor.x = clamp(p.x, -CURSOR_LIMIT, CURSOR_LIMIT);
+      cursor.y = clamp(p.y, -CURSOR_LIMIT, CURSOR_LIMIT);
+      renderControls();
+      const t = Number.isFinite(at) ? at : now();
+      if (phase === 'pitching' && flight && !flight.swung && !flight.take && t >= flight.start) {
+        const f = flight;
+        f.hold = 0;
+        userSwing(currentSwingMode(), t);
+        if (f.swung) return 'swing';
+        if (f.takeDue && phase === 'pitching' && flight === f) finishPitch(f.pitch, null);
+        return 'move';
+      }
+      releaseHold();
+      return 'move';
+    }
+    if (phase === 'ready' && pitchStep === 'aim') {
+      aim.x = clamp(p.x, -AIM_LIMIT, AIM_LIMIT);
+      aim.y = clamp(p.y, -AIM_LIMIT, AIM_LIMIT);
+      renderControls();
+      return 'aim';
+    }
+    return null;
+  }
+
+  /**
+   * 球種パネルのタップ。i = 球種の番号（球種名を押した）、dir = マスの方向（マスの余白を押した）。
+   * 選んでいる球種をもう一度押すと決定（コース選びへ）。戻り値 'select' | 'confirm' | null
+   */
+  function tapPitch(i, dir) {
+    if (destroyed || !state || subsMenu || fieldView || userBatting() || phase !== 'ready' || pitchStep !== 'select') return null;
+    const list = userPitches();
+    let idx = Number.isInteger(i) && i >= 0 && i < list.length ? i : -1;
+    if (idx < 0 && dir) {
+      const inSlot = list.map((p, k) => ({ p, k })).filter(({ p }) => p.dir === dir);
+      if (!inSlot.length) return null;
+      const at = inSlot.findIndex((c) => c.k === pitchIdx);
+      idx = at < 0 ? inSlot[0].k : inSlot[(at + 1) % inSlot.length].k; // 同じマスに複数なら順番に（1つなら決定）
+    }
+    if (idx < 0) return null;
+    if (idx === pitchIdx) { setPitchStep('aim'); return 'confirm'; }
+    pitchIdx = idx;
+    play('select');
+    render();
+    return 'select';
+  }
+
   /** Esc を試合画面で使うか（采配メニュー表示中・開ける状態・守備中） */
   function isCapturingEsc() {
     if (destroyed || !state) return false;
@@ -1791,6 +1948,8 @@ export function createGameScreen(el, ctx) {
     pitchIdx = 0;
     pitchStep = 'select';
     buntStance = false;
+    swingPref = 'meet';
+    prefBatterId = null;
     steal = null;
     held.clear();
     el.innerHTML = template();
@@ -1828,5 +1987,5 @@ export function createGameScreen(el, ctx) {
     flight = null;
   }
 
-  return { start, handleKey, handleKeyUp, isCapturingEsc, dragCursor, destroy };
+  return { start, handleKey, handleKeyUp, isCapturingEsc, dragCursor, destroy, touchInfo, setSwingMode, touchZoneDown, touchZoneTap, touchZoneCancel, tapPitch };
 }

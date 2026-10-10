@@ -372,6 +372,7 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .dial-slot.on{box-shadow:0 0 0 3px var(--accent)}
 .dial-slot.on .dial-arrow{color:var(--accent)}
 .dial-hint{margin-top:6px;text-align:center;font-size:12px;font-weight:800;color:var(--muted-light)}
+.dial-hint-touch{display:none}
 /* 変化量バー（1–7） */
 .lv-bars{display:inline-flex;gap:2px;align-items:flex-end}
 .lv-bars>i{display:block;width:5px;height:8px;border-radius:1px;background:rgba(255,255,255,.22)}

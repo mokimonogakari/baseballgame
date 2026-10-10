@@ -54,7 +54,8 @@ body.compact .fs-btn svg{width:32px;height:32px}
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
   --tu-l:max(10px,env(safe-area-inset-left,0px));--tu-r:max(10px,env(safe-area-inset-right,0px));
   --tu-b:max(10px,env(safe-area-inset-bottom,0px));--tu-t:max(8px,env(safe-area-inset-top,0px));
-  --dp:clamp(56px,9.5vmin,76px);--gap:8px;--zx:clamp(80px,14vmin,112px);--pill:clamp(48px,7vmin,58px)}
+  --dp:clamp(56px,9.5vmin,76px);--gap:8px;--zx:clamp(80px,14vmin,112px);--pill:clamp(48px,7vmin,58px);
+  --seg:clamp(48px,7vmin,58px);--segw:clamp(62px,9vmin,80px)}
 #touch-ui[hidden]{display:none}
 #touch-ui button{pointer-events:auto;touch-action:none;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;font-family:inherit;margin:0;padding:0;cursor:pointer;
   transition:transform .06s,background-color .06s}
@@ -84,8 +85,29 @@ body.compact .fs-btn svg{width:32px;height:32px}
   background:rgba(127,209,255,.82);color:var(--navy);font-size:17px;font-weight:900;white-space:nowrap}
 .tu-pill.is-down{background:rgba(127,209,255,1)}
 .tu-pill.is-disabled{opacity:.45}
-.tu-mini{position:absolute;right:var(--tu-r);bottom:calc(var(--tu-b) + var(--zx) * 1.26 + 10px);display:flex;gap:10px}
+.tu-mini{position:absolute;right:var(--tu-r);bottom:calc(var(--tu-b) + var(--zx) * 1.26 + 10px);display:flex;gap:10px;align-items:flex-end}
 .tu-mini.is-off{display:none}
+/* 打ち方の切り替え（ミート / 強振 / バント）。選んでいる打ち方を強調 */
+.tu-seg{display:flex;pointer-events:none;border-radius:16px;box-shadow:0 3px 0 rgba(28,43,75,.5)}
+#touch-ui .tu-seg-btn{height:var(--seg);min-width:var(--segw);padding:0 8px;border:3px solid rgba(28,43,75,.82);background:rgba(255,255,255,.8);color:var(--navy);
+  font-size:clamp(14px,4.6vmin,17px);font-weight:900;white-space:nowrap;border-radius:0;margin-left:-3px}
+#touch-ui .tu-seg-btn:first-child{border-radius:16px 0 0 16px;margin-left:0}
+#touch-ui .tu-seg-btn:last-child{border-radius:0 16px 16px 0}
+#touch-ui .tu-seg-btn.is-on{background:var(--accent,#FFD54A);position:relative;z-index:1;box-shadow:inset 0 -4px 0 rgba(28,43,75,.25)}
+#touch-ui .tu-seg-btn[data-swing="power"].is-on{background:#FF6B6F;color:#fff}
+#touch-ui .tu-seg-btn[data-swing="bunt"].is-on{background:#7FD1FF}
+#touch-ui .tu-seg-btn.is-disabled{opacity:.45}
+#touch-ui .tu-seg-btn.is-down{transform:scale(.94)}
+/* 大ボタンに言葉（スイング / 決定 / 投げる / 球種）を出すとき */
+.tu-round b.tu-word{font-size:calc(var(--zx) * .19);letter-spacing:-1px;white-space:nowrap}
+.tu-round small:empty{display:none}
+#touch-ui[data-step] .tu-round small{max-width:calc(var(--zx) * .8);overflow:hidden;text-overflow:ellipsis}
+#touch-ui[data-step="select"] .tu-z small,#touch-ui[data-step="aim"] .tu-z small{font-size:11px;letter-spacing:-.5px}
+/* 盗塁できないときは出さない（打者・打ち方の切り替えと重ならないように） */
+#touch-ui .tu-steal.is-disabled{display:none}
+#touch-ui[data-step="bat"] .tu-z small{font-size:14px;background:rgba(28,43,75,.85);color:#FFD54A;border-radius:999px;padding:2px 8px}
+#touch-ui[data-step="select"] .tu-x,#touch-ui[data-step="windup"] .tu-x{visibility:hidden}
+#touch-ui[data-step="aim"] .tu-x{background:rgba(127,209,255,.88);color:var(--navy)}
 .tu-steal{background:rgba(255,255,255,.82)}
 .tu-top{position:absolute;right:var(--tu-r);top:var(--tu-t);display:flex;gap:10px}
 .tu-subs{background:rgba(255,213,74,.92)}
@@ -102,6 +124,22 @@ body.touch .game>.dpad,body.touch .game>.action-btns,body.touch .game>.mini-btns
 body.touch .fv-dpad,body.touch .fv-actions,body.touch .fv-skip{display:none!important}
 body.touch .game-header .gh-btns{visibility:hidden}
 body.touch .dial-hint{display:none}
+/* 球種パネル（タッチ）: マス・球種をタップで選ぶ。マスは画面上 44px 以上 */
+body.touch .dial-hint-touch{display:block;margin-top:6px;text-align:center;font-size:13px;font-weight:800;color:var(--muted-light)}
+body.touch .dial-grid{grid-template-rows:repeat(2,minmax(76px,auto))}
+body.touch .dial-slot,body.touch .dial-pitch{cursor:pointer}
+body.touch .dial-slot.empty{cursor:default}
+/* スマホ横向き: パネルを大きくし、ゾーンの上（投手のあたり）へ。ゾーン・カーソルは隠さない */
+body.touch.compact .pitch-dial{left:326px;top:104px;width:628px;padding:12px 14px 10px;border-width:4px;border-radius:20px}
+body.touch.compact .dial-title{font-size:20px;top:-18px;padding:2px 14px}
+body.touch.compact .dial-grid{grid-template-rows:repeat(2,minmax(104px,auto));gap:10px}
+body.touch.compact .dial-slot{padding:4px 8px 4px 30px;border-radius:14px}
+body.touch.compact .dial-slot.center{padding-left:8px}
+body.touch.compact .dial-arrow{font-size:22px;left:6px;top:6px}
+body.touch.compact .dial-pitch{padding:4px 6px;gap:4px;border-radius:10px}
+body.touch.compact .dial-pitch .dp-name{font-size:25px}
+body.touch.compact .dial-pitch .dp-velo{font-size:19px}
+body.touch.compact .dial-hint-touch{font-size:21px;margin-top:8px}
 /* スマホ横向き: 右上の さいはい/メニュー（#touch-ui）とぶつからないよう、ヘッダーを左に寄せ・打者パネルを下げる */
 body.touch.compact .game-header .gh-btns{display:none}
 body.touch.compact .game-header{padding-right:384px;padding-left:16px;justify-content:space-between}
@@ -239,3 +277,5 @@ body.compact .te-strip{bottom:-112px;height:102px}
 body.compact .te-name{height:78px;font-size:max(20px,calc(17px / var(--scale,1)));width:300px}
 body.compact .te-sw{width:62px;height:62px}
 body.compact .te-msg{font-size:24px}
+body.touch.compact .dial-pitch .lv-bars{gap:3px}
+body.touch.compact .dial-pitch .lv-bars>i{width:9px;height:14px;border-radius:2px}
