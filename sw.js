@@ -7,10 +7,11 @@
  * - 他オリジン（Google Fonts など）には手を出さない。
  * - 公開物を大きく変えたら CACHE_VERSION を上げる（古いキャッシュは activate で削除）。
  */
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2-mobile';
 const CACHE = `dokidoki-${CACHE_VERSION}`;
 
 const SHELL = [
+  'js/challenge.js', 'js/challenge-model.mjs', 'css/challenge.css',
   './',
   'index.html',
   'manifest.webmanifest',

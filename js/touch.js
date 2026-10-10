@@ -108,6 +108,8 @@ export function initTouch({ stage, wrap, getGame, getCurrent, getScale }) {
     try { game()?.handleKeyUp?.(a.key); } catch (er) { console.error(er); }
   }
   function releaseAll() { [...active.keys()].forEach(release); endDrag(); }
+  window.addEventListener('blur', releaseAll);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
   let sync = () => {}; // 下で定義（ボタンを押した直後にも呼ぶ）
 
   ui.querySelectorAll('[data-key]').forEach((btn) => {
