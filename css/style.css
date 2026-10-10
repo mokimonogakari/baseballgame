@@ -168,7 +168,7 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .zone{left:520px;top:404px;width:240px;height:240px;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);border:4px solid rgba(255,255,255,.85);background:rgba(28,43,75,.18);z-index:3}
 .zone-cell{border:1px solid rgba(255,255,255,.45)}
 .zone-cell.target{background:rgba(255,213,74,.35)}
-.cursor{width:96px;height:56px;border:5px solid var(--accent);border-radius:50%;box-shadow:0 0 0 3px var(--navy),inset 0 0 0 3px var(--navy);transition:left .08s,top .08s;z-index:4;pointer-events:none}
+.cursor{width:96px;height:56px;border:5px solid var(--accent);border-radius:50%;box-shadow:0 0 0 3px var(--navy),inset 0 0 0 3px var(--navy);background:rgba(255,213,74,.12);transform:translate(-50%,-50%);transition:width .12s,height .12s,border-color .12s;z-index:4;pointer-events:none}
 .ball{width:22px;height:22px;background:#fff;border:3px solid var(--navy);border-radius:50%;z-index:4}
 .chibi-pitcher{left:596px;top:232px;transform:scale(.55);transform-origin:top left;z-index:2}
 .dpad{left:20px;bottom:20px;width:180px;height:180px;z-index:6}
@@ -314,3 +314,96 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .overlay.is-big .overlay-big{color:#FF8A3D}
 .overlay.is-sub{background:rgba(14,24,48,.35)}
 .overlay.is-sub .overlay-big{font-size:72px;color:#fff;text-shadow:4px 4px 0 #1C2B4B,-2px -2px 0 #1C2B4B,2px -2px 0 #1C2B4B,-2px 2px 0 #1C2B4B}
+
+/* ---------- パワプロ風の打撃・投球 UI ---------- */
+/* ミートカーソル（連続移動の楕円 + 芯） */
+.cursor-core{position:absolute;left:50%;top:50%;width:18px;height:18px;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,#fff 0 30%,#FF5A5F 34% 100%);border:2px solid var(--navy);box-sizing:border-box}
+.cursor.is-power{border-color:#FF5A5F;background:rgba(229,72,77,.14)}
+.cursor.is-bunt{border-color:#7FD1FF;border-style:dashed;background:rgba(127,209,255,.14)}
+/* 投球の影（地面）。ボールとの縦の差で高さが分かる */
+.ball-shadow.pitch{width:26px;height:10px;margin:-5px 0 0 -13px;background:radial-gradient(ellipse,rgba(14,24,48,.6) 0 45%,rgba(14,24,48,0) 72%);z-index:4}
+/* 投球の狙い（ゾーン外も可）と制球のばらつき */
+.aim{width:30px;height:30px;transform:translate(-50%,-50%);border-radius:50%;border:4px solid #fff;box-shadow:0 0 0 3px var(--navy);background:radial-gradient(circle,var(--red) 0 22%,transparent 26%);z-index:7;pointer-events:none}
+.aim::before,.aim::after{content:"";position:absolute;background:#fff;box-shadow:0 0 0 1px var(--navy)}
+.aim::before{left:50%;top:-14px;bottom:-14px;width:2px;margin-left:-1px}
+.aim::after{top:50%;left:-14px;right:-14px;height:2px;margin-top:-1px}
+.aim.is-out{border-color:#7FD1FF}
+.aim-ring{transform:translate(-50%,-50%);border-radius:50%;border:2px dashed rgba(255,255,255,.85);background:radial-gradient(circle,rgba(255,213,74,.28),rgba(255,213,74,.08) 70%);z-index:5;pointer-events:none;transition:width .2s,height .2s}
+/* 盗塁・バントの表示 */
+.bat-tags{left:470px;top:364px;width:340px;display:flex;justify-content:space-between;z-index:6;pointer-events:none}
+.bat-tags>span{visibility:hidden;font-size:16px;font-weight:900;border-radius:999px;padding:3px 14px;border:3px solid var(--navy);box-shadow:0 3px 0 var(--navy)}
+.bat-tags>span.show{visibility:visible}
+.tag-steal{background:#fff;color:var(--navy)}
+.tag-steal.is-go{background:var(--red);color:#fff;animation:tag-blink .5s steps(2) infinite}
+.tag-bunt{background:#7FD1FF;color:var(--navy);margin-left:auto}
+@keyframes tag-blink{50%{filter:brightness(1.35)}}
+.mini-btns{right:20px;bottom:180px;display:flex;gap:10px;z-index:6}
+.mini-btn{height:44px;min-width:84px;padding:0 12px;border-radius:999px;border:4px solid var(--navy);box-shadow:0 4px 0 var(--navy);background:#7FD1FF;color:var(--navy);font-size:17px;font-weight:900;display:flex;align-items:center;gap:6px;justify-content:center}
+.mini-btn small{font-size:11px;background:var(--navy);color:#fff;border-radius:5px;padding:0 5px;line-height:16px}
+.mini-btn.steal{background:#fff}
+.mini-btn.is-disabled{opacity:.45}
+.mini-btn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--navy)}
+/* 走者ダイヤモンドの盗塁ランナー */
+.steal-runner{position:absolute;left:0;top:0;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:var(--red);border:2px solid #fff;opacity:0;pointer-events:none;z-index:2;transform:translate(var(--fx,48px),var(--fy,30px))}
+.steal-runner.lead{opacity:1;animation:sr-blink .35s steps(2) infinite}
+.steal-runner.run{opacity:1;animation:sr-run .75s ease-in forwards,sr-blink .25s steps(2) infinite}
+.steal-runner.safe{opacity:1;transform:translate(var(--tx),var(--ty));background:var(--accent);animation:sr-blink .3s steps(2) 4}
+.steal-runner.out{opacity:1;transform:translate(var(--tx),var(--ty));background:#5B6B8A;animation:sr-blink .3s steps(2) 4}
+@keyframes sr-blink{50%{box-shadow:0 0 0 4px rgba(255,213,74,.9)}}
+@keyframes sr-run{from{transform:translate(var(--fx),var(--fy))}to{transform:translate(var(--tx),var(--ty))}}
+.overlay.is-steal .overlay-big{color:#7FD1FF}
+.overlay.is-steal-out .overlay-big{color:#FF8A3D;font-size:76px}
+/* 球種パネル（変化方向の図）。中央 = ストレート */
+.pitch-dial{left:452px;top:420px;width:376px;padding:8px 10px 8px;background:rgba(14,24,48,.9);border:3px solid var(--accent);border-radius:16px;z-index:7;display:none;box-shadow:0 6px 0 rgba(14,24,48,.5)}
+.pitch-dial.show{display:block}
+.dial-title{position:absolute;left:12px;top:-15px;background:var(--accent);color:var(--navy);font-size:13px;font-weight:900;border-radius:6px;padding:2px 10px}
+.dial-grid{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,minmax(62px,auto));gap:6px}
+.dial-slot{position:relative;background:#34476E;border-radius:10px;display:flex;flex-direction:column;justify-content:center;gap:2px;padding:3px 6px 3px 20px;min-width:0;overflow:hidden}
+.dial-slot.empty{background:rgba(52,71,110,.35)}
+.dial-slot.center{padding-left:6px;align-items:center;background:#2B3F66}
+.dial-arrow{position:absolute;left:4px;top:3px;font-size:14px;color:var(--muted-light);font-weight:900;line-height:1}
+.dial-slot.empty .dial-arrow{opacity:.4}
+.dial-pitch{display:flex;flex-direction:column;gap:2px;min-width:0;border-radius:6px;padding:1px 4px}
+.dial-pitch .dp-name{font-size:13px;font-weight:900;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.4px}
+.dial-pitch .dp-velo{font-size:11px;color:var(--accent);font-weight:800}
+.dial-pitch.selected{background:var(--accent);box-shadow:0 0 0 2px #fff}
+.dial-pitch.selected .dp-name{color:var(--navy)}
+.dial-pitch.selected .dp-velo{color:var(--red)}
+.dial-slot.on{box-shadow:0 0 0 3px var(--accent)}
+.dial-slot.on .dial-arrow{color:var(--accent)}
+.dial-hint{margin-top:6px;text-align:center;font-size:12px;font-weight:800;color:var(--muted-light)}
+/* 変化量バー（1–7） */
+.lv-bars{display:inline-flex;gap:2px;align-items:flex-end}
+.lv-bars>i{display:block;width:5px;height:8px;border-radius:1px;background:rgba(255,255,255,.22)}
+.lv-bars>i.on{background:var(--accent)}
+.dial-pitch.selected .lv-bars>i{background:rgba(28,43,75,.25)}
+.dial-pitch.selected .lv-bars>i.on{background:var(--red)}
+.pitch-item .pi-lv{flex:none;gap:1px}
+.pitch-item .pi-lv>i{width:3px;height:9px}
+.pitch-item.selected .pi-lv>i{background:rgba(28,43,75,.25)}
+.pitch-item.selected .pi-lv>i.on{background:var(--red)}
+.pi-dir{font-style:normal;font-size:11px;color:var(--accent);margin-right:2px}
+.pitch-item.selected .pi-dir{color:var(--red)}
+/* 調子の矢印・特殊能力チップ */
+.cond{flex:none;display:inline-flex}
+.cond-arrow{font-size:22px;font-weight:900;line-height:1;text-shadow:0 0 0 #000,1px 1px 0 rgba(0,0,0,.35)}
+.skills{display:flex;flex-wrap:wrap;gap:4px}
+.skills:empty{display:none}
+.skill-chip{font-size:12px;font-weight:900;color:#fff;border-radius:6px;padding:2px 7px;line-height:1.3;white-space:nowrap;box-shadow:inset 0 -2px 0 rgba(0,0,0,.18)}
+.skill-chip.is-gold{color:var(--navy)}
+.skill-chip.is-more{background:#34476E}
+/* バントの構え（パーツの transform をなめらかに切り替え） */
+.chibi-batter [data-bt]{transition:transform .14s ease-out}
+.chibi-batter.bunting .bt-rig{animation:none}
+.chibi-batter.bunt-poke .bt-rig{animation:bunt-poke .22s ease-out}
+@keyframes bunt-poke{40%{transform:translate(4px,-3px)}100%{transform:translate(0,0)}}
+/* 2度押し（ナイスピッチ）の縮むリング */
+.windup-ring{transform:translate(-50%,-50%);border-radius:50%;border:4px solid #fff;box-shadow:0 0 0 2px var(--navy);z-index:5;pointer-events:none}
+.windup-ring.in-window{border-color:var(--accent);box-shadow:0 0 0 2px var(--navy),0 0 14px 4px rgba(255,213,74,.8)}
+.aim-ring.is-nice{border-color:var(--accent);border-style:solid;background:radial-gradient(circle,rgba(255,213,74,.5),rgba(255,213,74,.15) 70%)}
+.overlay.is-nice .overlay-big{font-size:60px;color:#7FD1FF}
+/* 真芯の演出 */
+.spark.big{width:220px;height:220px;margin:-110px 0 0 -110px}
+.shin-flash{transform:translate(-50%,-50%);font-size:54px;font-weight:900;color:#FF4FA3;text-shadow:3px 3px 0 #1C2B4B,-2px -2px 0 #1C2B4B,2px -2px 0 #1C2B4B,-2px 2px 0 #1C2B4B;z-index:8;pointer-events:none;opacity:0;white-space:nowrap}
+.shin-flash.go{animation:shin-pop .8s ease-out}
+@keyframes shin-pop{0%{opacity:0;transform:translate(-50%,-50%) scale(.4)}15%{opacity:1;transform:translate(-50%,-110%) scale(1.25)}70%{opacity:1;transform:translate(-50%,-120%) scale(1)}100%{opacity:0;transform:translate(-50%,-140%) scale(1)}}
