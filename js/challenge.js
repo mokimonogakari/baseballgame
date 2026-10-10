@@ -40,6 +40,7 @@ export function openChallenge({ sound, onClose }) {
     if (state !== 'pitch') return;
     result = judgeSwing(offset, combo); combo = result.combo; score += result.points;
     if (result.kind === 'hr') hrs++;
+    if (result.kind === 'hr') sound.say?.('ホームラン！');
     q('[data-score]').textContent = `${score} 点`;
     q('[data-combo]').textContent = combo > 1 ? `${combo} 連続ヒット！` : 'つぎも ねらおう！';
     message(result.kind === 'hr' ? `ホームラン！ +${result.points}` : result.kind === 'hit' ? `ヒット！ +${result.points}` : result.hint);
@@ -49,6 +50,7 @@ export function openChallenge({ sound, onClose }) {
     state = 'result'; elapsed = 0; ball++; btn.textContent = 'ナイスチャレンジ！'; btn.setAttribute('aria-disabled', 'true');
   }
   function complete() {
+    sound.say?.('ナイスチャレンジ！ もう一回あそぼう！');
     btn.setAttribute('aria-disabled', 'false');
     state = 'done'; btn.disabled = false; btn.textContent = 'もういっかい ▶';
     const record = score > best; best = Math.max(score, best);

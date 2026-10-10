@@ -50,7 +50,7 @@ function loadSettings() {
   return out;
 }
 const settings = loadSettings();
-const sound = createSound({ enabled: settings.sound });
+const sound = createSound({ enabled: settings.sound, onVoiceActivity: active => music.duck(active) });
 const music = createMusic({ enabled: settings.music, volume: settings.musicVolume });
 function saveSettings(patch) {
   Object.assign(settings, patch || {});

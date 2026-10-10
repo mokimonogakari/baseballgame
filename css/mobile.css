@@ -279,3 +279,9 @@ body.compact .te-sw{width:62px;height:62px}
 body.compact .te-msg{font-size:24px}
 body.touch.compact .dial-pitch .lv-bars{gap:3px}
 body.touch.compact .dial-pitch .lv-bars>i{width:9px;height:14px;border-radius:2px}
+/* Direct throws use real finger-sized buttons, outside the scaled stage. */
+.tu-bases{display:none;position:absolute;left:50%;bottom:var(--tu-b);transform:translateX(-50%);gap:8px;pointer-events:auto}
+#touch-ui .tu-bases button{min-width:64px;min-height:58px;padding:8px;background:#fff;color:#1c2b4b;border:3px solid #1c2b4b;border-radius:16px;font-size:19px;font-weight:900}
+#touch-ui .tu-bases button.recommended{background:#ffd54a;box-shadow:0 0 0 3px white}
+#touch-ui[data-mode="field"][data-field-phase="secured"] .tu-bases{display:flex}
+#touch-ui[data-mode="field"][data-field-phase="secured"] .tu-dpad,#touch-ui[data-mode="field"][data-field-phase="secured"] .tu-act{display:none}

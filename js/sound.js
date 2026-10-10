@@ -27,7 +27,7 @@ function pickExt() {
   return ['mp3', 'ogg'];
 }
 
-export function createSound({ enabled = true } = {}) {
+export function createSound({ enabled = true, onVoiceActivity = () => {} } = {}) {
   let on = !!enabled;
   let ac = null, master = null, voiceBus = null, noiseBuf = null, pinkBuf = null;
   // clip id -> AudioBuffer | null (failed); missing key = still loading
@@ -35,6 +35,14 @@ export function createSound({ enabled = true } = {}) {
   const voiceBytes = {};
   let voiceLoad = null;
   let curVoice = null;
+  let voiceTimer, voiceToken = 0;
+  function speaking(seconds) {
+    const token = ++voiceToken;
+    clearTimeout(voiceTimer); onVoiceActivity(true);
+    const end = () => { if (token === voiceToken) { clearTimeout(voiceTimer); onVoiceActivity(false); } };
+    voiceTimer = setTimeout(end, seconds * 1000);
+    return end;
+  }
 
   // Start downloading clip bytes right away (no AudioContext needed for fetch).
   const exts = pickExt();
@@ -160,7 +168,11 @@ export function createSound({ enabled = true } = {}) {
       if (ss && typeof SpeechSynthesisUtterance !== 'undefined') {
         ss.cancel();
         const u = new SpeechSynthesisUtterance(text);
-        u.lang = 'ja-JP'; u.rate = 0.9; u.pitch = 0.6; u.volume = 1;
+        const voices = ss.getVoices().filter(v => /^ja(-|_|$)/i.test(v.lang));
+        u.voice = voices.find(v => v.localService) || voices[0] || null;
+        u.lang = 'ja-JP'; u.rate = 0.95; u.pitch = 1; u.volume = 1;
+        const end = speaking(Math.max(3, text.length * .3)); u.onend = end; u.onerror = end;
+        ss.resume();
         ss.speak(u);
         return;
       }
@@ -180,7 +192,8 @@ export function createSound({ enabled = true } = {}) {
     const g = ac.createGain();
     g.gain.value = VOICE_LEVEL[name] != null ? VOICE_LEVEL[name] : 1;
     src.connect(g); g.connect(voiceBus);
-    src.onended = () => { if (curVoice === src) curVoice = null; try { g.disconnect(); } catch (e) { /* ignore */ } };
+    const ended = speaking(src.buffer.duration + .2);
+    src.onended = () => { ended(); if (curVoice === src) curVoice = null; try { g.disconnect(); } catch (e) { /* ignore */ } };
     src.start(t);
     curVoice = src;
   }
@@ -228,6 +241,7 @@ export function createSound({ enabled = true } = {}) {
   function setEnabled(v) {
     on = !!v;
     if (!on) {
+      ++voiceToken; clearTimeout(voiceTimer); onVoiceActivity(false);
       try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) { /* ignore */ }
       try { if (curVoice) curVoice.stop(); } catch (e) { /* ignore */ }
       curVoice = null;
@@ -241,5 +255,9 @@ export function createSound({ enabled = true } = {}) {
       return loadVoices(c);
     } catch (e) { return Promise.resolve({ loaded: [], failed: clipIds.slice() }); }
   }
-  return { play, setEnabled, unlock, voiceReady };
+  function say(text) {
+    if (!on) return;
+    try { const c = ensure(); if (!c) return; if (curVoice) curVoice.stop(); speak(text, 660, c.currentTime); } catch {}
+  }
+  return { play, say, setEnabled, unlock, voiceReady };
 }

@@ -77,6 +77,10 @@ export function initTouch({ stage, wrap, getGame, getCurrent, getScale }) {
   <div class="tu-top">
     <button type="button" class="tu-pill tu-subs" data-act="subs">さいはい</button>
     <button type="button" class="tu-pill tu-menu" data-act="menu">メニュー</button>
+  </div>
+  <div class="tu-bases" aria-label="タップで送球">
+    <button data-key="base3">3塁</button><button data-key="base2">2塁</button>
+    <button data-key="base1">1塁</button><button data-key="base4">本塁</button>
   </div>`;
   body.appendChild(ui);
   const q = (s) => ui.querySelector(s);
@@ -230,6 +234,12 @@ export function initTouch({ stage, wrap, getGame, getCurrent, getScale }) {
     const root = stage.querySelector('#screen-game .game');
     if (!root) return;
     const fv = root.querySelector('.fv');
+    ui.dataset.fieldPhase = fv?.dataset.phase || '';
+    ui.querySelectorAll('.tu-bases button').forEach(b => {
+      const recommended = b.dataset.key === 'base' + fv?.dataset.base;
+      b.classList.toggle('recommended', recommended);
+      b.setAttribute('aria-label', b.textContent + 'へ送球' + (recommended ? '（おすすめ）' : ''));
+    });
     const subsOpen = !!stage.querySelector('#screen-game .sb');
     const mode = subsOpen ? 'subs' : fv ? (fv.classList.contains('fv-user') ? 'field' : 'field-cpu') : 'play';
     set('mode', mode, (v) => { ui.dataset.mode = v; if (v === 'subs') releaseAll(); });
@@ -240,6 +250,7 @@ export function initTouch({ stage, wrap, getGame, getCurrent, getScale }) {
     let zl = mode === 'field-cpu' ? 'スキップ' : (src.querySelector('[data-ref="z-label"]')?.textContent || '');
     let xl = src.querySelector('[data-ref="x-label"]')?.textContent || '';
     let zb = 'Z', xb = 'X';
+    if (mode === 'field') { zb = fv.dataset.phase === 'secured' ? '送球' : 'ダイブ'; xb = '切替'; }
     // 打席・投球では大ボタンを言葉に（スイング / 決定 / 投げる）。小さい字は打ち方・球種名
     const pitchName = () => root.querySelector('.dial-pitch.selected .dp-name')?.textContent
       || (root.querySelector('.pitch-item.selected')?.getAttribute('title') || '').split(' ')[0];
