@@ -5,8 +5,10 @@ import { boxScore } from './engine.js';
 import { renderTeamEdit, loadMyTeam, MY_TEAM_ID } from './teamedit.js';
 import { createSound } from './sound.js';
 import { createMusic } from './music.js';
+import { initTouch, canFullscreen, isFullscreenOrStandalone, enterFullscreen } from './touch.js';
 
 const stage = document.getElementById('stage');
+const wrap = document.getElementById('stage-wrap');
 const screens = {};
 document.querySelectorAll('.screen').forEach((s) => (screens[s.dataset.screen] = s));
 
@@ -18,9 +20,18 @@ let myTeam = loadMyTeam();
 let opponentTeamId = null;
 let oppModal = null;
 
+let stageScale = 1;
+/** 1280×720 のステージを画面に収める。#stage-wrap の padding = safe-area（ノッチ）を除いた領域で計算 */
 function fitStage() {
-  const scale = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+  const cs = getComputedStyle(wrap);
+  const px = (v) => parseFloat(v) || 0;
+  const w = (wrap.clientWidth || window.innerWidth) - px(cs.paddingLeft) - px(cs.paddingRight);
+  const h = (wrap.clientHeight || window.innerHeight) - px(cs.paddingTop) - px(cs.paddingBottom);
+  const scale = Math.max(0.05, Math.min(w / 1280, h / 720));
+  stageScale = scale;
   stage.style.setProperty('--scale', scale);
+  // 小さい画面（スマホ横向きなど）では重要な文字・ボタンを大きくする
+  document.body.classList.toggle('compact', scale < 0.6);
 }
 
 const SETTINGS_KEY = 'dokidoki.settings';
@@ -47,9 +58,29 @@ function saveSettings(patch) {
   music.setEnabled(settings.music);
   music.setVolume(settings.musicVolume);
 }
-const unlockOnce = () => { sound.unlock(); music.unlock(); window.removeEventListener('pointerdown', unlockOnce); window.removeEventListener('keydown', unlockOnce); };
-window.addEventListener('pointerdown', unlockOnce);
-window.addEventListener('keydown', unlockOnce);
+/* ---------- 音（iOS Safari は touchend でないと AudioContext が動かないことがある） ---------- */
+let audioUnlocked = false;
+const audioCtx = () => window.__dokiAudioCtx || null;
+function unlockAudio() {
+  if (document.hidden) return;
+  const c = audioCtx();
+  if (audioUnlocked && c && c.state === 'running') return;
+  audioUnlocked = true;
+  sound.unlock();
+  music.unlock();
+  try { const c2 = audioCtx(); if (c2 && c2.state !== 'running') c2.resume(); } catch (e) { /* ignore */ }
+}
+['pointerdown', 'pointerup', 'touchend', 'keydown'].forEach((t) => window.addEventListener(t, unlockAudio, { passive: true }));
+// 裏に回ったら止める（BGM も効果音も AudioContext ごと一時停止）。戻ったら再開
+document.addEventListener('visibilitychange', () => {
+  const c = audioCtx();
+  if (!c) return;
+  try {
+    if (document.hidden) { if (c.state === 'running') c.suspend(); }
+    else if (audioUnlocked && c.state !== 'running') c.resume();
+  } catch (e) { /* ignore */ }
+});
+window.addEventListener('pagehide', () => { try { audioCtx()?.suspend(); } catch (e) { /* ignore */ } });
 stage.addEventListener('click', (e) => {
   const t = e.target.closest && e.target.closest('button, a');
   if (t && !t.disabled) sound.play('decide');
@@ -140,7 +171,7 @@ function go(name, payload) {
   for (const [k, el] of Object.entries(screens)) el.hidden = k !== name;
   const el = screens[name];
   el.innerHTML = '';
-  if (name === 'title') renderTitle(el, ctx);
+  if (name === 'title') { renderTitle(el, ctx); addFullscreenButton(el); }
   else if (name === 'team') renderTeam(el, ctx);
   else if (name === 'settings') renderSettings(el, ctx);
   else if (name === 'teamedit') editScreen = renderTeamEdit(el, ctx);
@@ -149,6 +180,25 @@ function go(name, payload) {
     gameScreen.start();
   } else if (name === 'result') renderResult(el, ctx, boxScore(payload), payload);
 }
+
+/** タイトルの「全画面」ボタン（Fullscreen API があり、まだ全画面・ホーム画面アプリでないときだけ） */
+function addFullscreenButton(el) {
+  if (!canFullscreen() || isFullscreenOrStandalone()) return;
+  const host = el.querySelector('.title') || el;
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'fs-btn';
+  b.setAttribute('aria-label', '全画面で遊ぶ');
+  b.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>全画面</span>';
+  b.onclick = async () => { await enterFullscreen(); b.remove(); };
+  host.appendChild(b);
+}
+const onFullscreenChange = () => {
+  fitStage();
+  if (current === 'title' && isFullscreenOrStandalone()) screens.title.querySelector('.fs-btn')?.remove();
+};
+document.addEventListener('fullscreenchange', onFullscreenChange);
+document.addEventListener('webkitfullscreenchange', onFullscreenChange);
 
 const KEYMAP = {
   ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
@@ -163,6 +213,7 @@ function typingTarget(e) {
 
 window.addEventListener('keydown', (e) => {
   if (typingTarget(e)) return;
+  if (touch.isRotateBlocking()) { e.preventDefault(); return; } // 縦向きの「横向きにして」表示中は入力を止める
   if (oppModal) {
     const k = KEYMAP[e.key];
     if (k || e.key === ' ') { e.preventDefault(); if (k) oppModal.key(k); }
@@ -191,7 +242,18 @@ window.addEventListener('keyup', (e) => {
   try { gameScreen.handleKeyUp?.(key); } catch (err) { console.error(err); }
 });
 
+const touch = initTouch({ stage, wrap, getGame: () => gameScreen, getCurrent: () => current, getScale: () => stageScale });
+
 window.addEventListener('resize', fitStage);
+window.addEventListener('orientationchange', () => { fitStage(); setTimeout(fitStage, 250); });
+window.visualViewport?.addEventListener('resize', fitStage);
 window.addEventListener('load', fitStage);
 fitStage();
 go('title');
+
+/* ---------- オフライン用 service worker（https か localhost のときだけ） ---------- */
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname))) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch((e) => console.warn('service worker:', e));
+  });
+}

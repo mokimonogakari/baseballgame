@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- ドキドキベースボール アプリアイコン（オリジナル）：帽子をかぶったボールくん -->
+  <rect width="512" height="512" fill="#1C2B4B"/>
+  <circle cx="256" cy="268" r="214" fill="#34476E"/>
+  <g fill="#FFD54A">
+    <path d="M86 132l9 21 21 9-21 9-9 21-9-21-21-9 21-9z"/>
+    <path d="M430 330l7 16 16 7-16 7-7 16-7-16-16-7 16-7z"/>
+    <circle cx="424" cy="150" r="9"/>
+    <circle cx="96" cy="372" r="7"/>
+  </g>
+  <!-- ボール -->
+  <circle cx="256" cy="292" r="150" fill="#FFFFFF" stroke="#1C2B4B" stroke-width="14"/>
+  <g fill="none" stroke="#E5484D" stroke-width="9" stroke-linecap="round">
+    <path d="M150 236c34 38 36 104 0 146"/>
+    <path d="M362 236c-34 38-36 104 0 146"/>
+  </g>
+  <g stroke="#E5484D" stroke-width="7" stroke-linecap="round">
+    <path d="M150 262l18-6M160 292l20-2M162 322l20 2M158 352l18 6"/>
+    <path d="M362 262l-18-6M352 292l-20-2M350 322l-20 2M354 352l-18 6"/>
+  </g>
+  <!-- かお -->
+  <ellipse cx="214" cy="300" rx="17" ry="24" fill="#1C2B4B"/>
+  <ellipse cx="298" cy="300" rx="17" ry="24" fill="#1C2B4B"/>
+  <circle cx="220" cy="291" r="6.5" fill="#FFFFFF"/>
+  <circle cx="304" cy="291" r="6.5" fill="#FFFFFF"/>
+  <ellipse cx="184" cy="338" rx="20" ry="12" fill="#FF8FA8" opacity=".85"/>
+  <ellipse cx="328" cy="338" rx="20" ry="12" fill="#FF8FA8" opacity=".85"/>
+  <path d="M236 342q20 22 40 0" fill="#E5484D" stroke="#1C2B4B" stroke-width="8" stroke-linejoin="round"/>
+  <!-- ぼうし -->
+  <path d="M284 222c50-4 112 2 140 18 10 6 4 20-8 22-52 6-104 2-140-6z" fill="#C63A3F" stroke="#1C2B4B" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M114 238c-4-86 60-136 142-136s146 50 142 136c-92 18-192 18-284 0z" fill="#E5484D" stroke="#1C2B4B" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M256 104v126" stroke="#1C2B4B" stroke-width="7" opacity=".35"/>
+  <path d="M150 196c10-44 44-70 74-78" fill="none" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round" opacity=".45"/>
+  <circle cx="256" cy="98" r="16" fill="#FFFFFF" stroke="#1C2B4B" stroke-width="9"/>
+  <!-- マーク -->
+  <circle cx="256" cy="186" r="32" fill="#FFD54A" stroke="#1C2B4B" stroke-width="8"/>
+  <path d="M244 170h9a16 16 0 0 1 0 32h-9z" fill="none" stroke="#1C2B4B" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

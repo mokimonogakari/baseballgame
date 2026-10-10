@@ -3,7 +3,7 @@
  * 描画・入力・投球アニメーションを担当。試合ロジックは engine.js に委譲する。
  *
  * export function createGameScreen(el, ctx)
- *   → { start(), handleKey(key), handleKeyUp(key), isCapturingEsc(), destroy() }
+ *   → { start(), handleKey(key), handleKeyUp(key), isCapturingEsc(), dragCursor(dx, dy), destroy() }
  *   key: 'up'|'down'|'left'|'right'|'z'|'x'|'enter'|'esc'
  *   ctx: { teams, userTeamId, go(name, payload), onGameOver(state),
  *          settings?: { innings:3|6|9, difficulty:'easy'|'normal'|'hard', sound:boolean },
@@ -22,6 +22,7 @@ import { openSubsMenu } from './subs.js';
 const ZONE_LEFT = 520;
 const ZONE_TOP = 404;
 const CELL = 80;
+const DRAG_GAIN = 1.4;              // タッチドラッグの移動倍率（指の移動 px → カーソル px）
 const ZONE_CX = ZONE_LEFT + CELL * 1.5; // 640
 const ZONE_CY = ZONE_TOP + CELL * 1.5;  // 524
 const PITCHER_X = 640;
@@ -1739,6 +1740,32 @@ export function createGameScreen(el, ctx) {
     if (fieldView && !subsMenu) fieldView.handleKey(key, false);
   }
 
+  /**
+   * タッチのドラッグでカーソルを動かす（トラックパッド風の相対移動）。dx/dy はステージ座標の px。
+   * 打席中はミートカーソル、投球のコース選択中は狙いを動かす。動かしたら true。
+   */
+  function dragCursor(dx, dy) {
+    if (destroyed || !state || subsMenu || fieldView) return false;
+    const k = DRAG_GAIN / CELL;
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) return false;
+    if (userBatting()) {
+      if ((phase === 'ready' || phase === 'pitching') && !flight?.swung) {
+        cursor.x = clamp(cursor.x + dx * k, -CURSOR_LIMIT, CURSOR_LIMIT);
+        cursor.y = clamp(cursor.y + dy * k, -CURSOR_LIMIT, CURSOR_LIMIT);
+        renderControls();
+        return true;
+      }
+      return false;
+    }
+    if (phase === 'ready' && pitchStep === 'aim') {
+      aim.x = clamp(aim.x + dx * k, -AIM_LIMIT, AIM_LIMIT);
+      aim.y = clamp(aim.y + dy * k, -AIM_LIMIT, AIM_LIMIT);
+      renderControls();
+      return true;
+    }
+    return false;
+  }
+
   /** Esc を試合画面で使うか（采配メニュー表示中・開ける状態・守備中） */
   function isCapturingEsc() {
     if (destroyed || !state) return false;
@@ -1801,5 +1828,5 @@ export function createGameScreen(el, ctx) {
     flight = null;
   }
 
-  return { start, handleKey, handleKeyUp, isCapturingEsc, destroy };
+  return { start, handleKey, handleKeyUp, isCapturingEsc, dragCursor, destroy };
 }

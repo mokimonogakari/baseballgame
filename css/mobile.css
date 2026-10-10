@@ -1,0 +1,241 @@
+/* =========================================================
+   スマホ・タブレット対応（js/touch.js / main.js の fitStage）
+   - body.touch   : (pointer: coarse) の端末。タッチ操作はステージ外の #touch-ui に出す
+   - body.compact : ステージの縮小率 < 0.6（スマホ横向きなど）。重要な文字・ボタンを大きく
+   デスクトップ（マウス・1280×720 以上）では見た目は変わらない。
+   ========================================================= */
+
+/* ---------- 共通（見た目は変わらない設定） ---------- */
+html,body{overscroll-behavior:none;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+html{-webkit-tap-highlight-color:transparent}
+/* ノッチ・ホームバーを避ける。fitStage は padding を除いた領域で縮小率を計算する */
+#stage-wrap{top:0;left:0;width:100%;height:100vh;height:100dvh;
+  padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+
+/* ---------- タッチ端末の誤動作の抑止 ---------- */
+@media (pointer:coarse){
+  body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  #stage-wrap{touch-action:none}
+  button,a,[role="button"]{touch-action:manipulation}
+  input,textarea,select{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+  /* 指でスクロールするリスト */
+  .te-scroll,.roster,.sb-body,.opp-list,.settings-body,[data-scroll]{touch-action:pan-y;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+}
+
+/* ---------- 横向きにしてね ---------- */
+#rotate-hint{display:none;position:fixed;inset:0;z-index:10000;background:#1C2B4B;color:#fff;align-items:center;justify-content:center;text-align:center;
+  font-family:var(--font);touch-action:none;-webkit-user-select:none;user-select:none;padding:env(safe-area-inset-top,0px) 24px env(safe-area-inset-bottom,0px)}
+#rotate-hint::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(115deg,#1C2B4B 0 60px,#22345A 60px 120px);opacity:.7}
+.rh-inner{position:relative;display:flex;flex-direction:column;align-items:center;gap:8px}
+.rh-inner svg{display:block}
+.rh-phone{width:132px;height:132px;animation:rh-turn 2.4s ease-in-out infinite;filter:drop-shadow(0 6px 0 rgba(8,14,30,.5))}
+.rh-arrow{position:absolute;top:-6px;width:150px;height:150px;opacity:.85;animation:rh-fade 2.4s ease-in-out infinite}
+.rh-inner p{margin:22px 0 0;font-size:26px;font-weight:900;letter-spacing:2px;color:#FFD54A;text-shadow:3px 3px 0 #0E1830}
+@keyframes rh-turn{0%,15%{transform:rotate(0)}45%,80%{transform:rotate(-90deg)}100%{transform:rotate(0)}}
+@keyframes rh-fade{0%,10%{opacity:0}25%,45%{opacity:.85}60%,100%{opacity:0}}
+@media (orientation:portrait) and (pointer:coarse){
+  #rotate-hint{display:flex}
+  #touch-ui{display:none!important}
+}
+@media (prefers-reduced-motion:reduce){.rh-phone{animation:none;transform:rotate(-90deg)}.rh-arrow{animation:none}}
+
+/* ---------- 全画面ボタン（タイトル。タッチ端末のみ） ---------- */
+.fs-btn{display:none;position:absolute;right:24px;top:20px;z-index:5;height:56px;padding:0 20px 0 16px;align-items:center;gap:8px;border:4px solid var(--navy);border-radius:14px;
+  box-shadow:0 5px 0 var(--navy);background:#fff;color:var(--navy);font-size:22px;font-weight:900}
+.fs-btn:active{transform:translateY(3px);box-shadow:0 2px 0 var(--navy)}
+body.touch .fs-btn{display:flex}
+body.compact .fs-btn{top:auto;bottom:50px;height:84px;padding:0 24px 0 20px;font-size:28px;gap:10px}
+body.compact .fs-btn svg{width:32px;height:32px}
+
+/* =========================================================
+   タッチ操作レイヤー（#touch-ui）。ステージの外・画面の四隅に実寸で固定
+   ========================================================= */
+#touch-ui{position:fixed;inset:0;z-index:50;pointer-events:none;font-family:var(--font);color:var(--navy);
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+  --tu-l:max(10px,env(safe-area-inset-left,0px));--tu-r:max(10px,env(safe-area-inset-right,0px));
+  --tu-b:max(10px,env(safe-area-inset-bottom,0px));--tu-t:max(8px,env(safe-area-inset-top,0px));
+  --dp:clamp(56px,9.5vmin,76px);--gap:8px;--zx:clamp(80px,14vmin,112px);--pill:clamp(48px,7vmin,58px)}
+#touch-ui[hidden]{display:none}
+#touch-ui button{pointer-events:auto;touch-action:none;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;font-family:inherit;margin:0;padding:0;cursor:pointer;
+  transition:transform .06s,background-color .06s}
+#touch-ui button.is-down{transform:scale(.92)}
+
+.tu-dpad{position:absolute;left:var(--tu-l);bottom:var(--tu-b);width:calc(var(--dp) * 3 + var(--gap) * 2);height:calc(var(--dp) * 3 + var(--gap) * 2)}
+.tu-dpad::before{content:"";position:absolute;left:50%;top:50%;width:calc(var(--dp) * .7);height:calc(var(--dp) * .7);margin:calc(var(--dp) * -.35) 0 0 calc(var(--dp) * -.35);border-radius:50%;background:rgba(28,43,75,.35)}
+.tu-dir{position:absolute;width:var(--dp);height:var(--dp);border-radius:50%;background:rgba(255,255,255,.58);border:3px solid rgba(28,43,75,.78);
+  color:var(--navy);font-size:calc(var(--dp) * .34);font-weight:900;line-height:1;box-shadow:0 3px 0 rgba(28,43,75,.45)}
+.tu-dir.up{left:calc(var(--dp) + var(--gap));top:0}
+.tu-dir.down{left:calc(var(--dp) + var(--gap));bottom:0}
+.tu-dir.left{left:0;top:calc(var(--dp) + var(--gap))}
+.tu-dir.right{right:0;top:calc(var(--dp) + var(--gap))}
+.tu-dir.is-down{background:rgba(255,213,74,.92)}
+
+.tu-act{position:absolute;right:var(--tu-r);bottom:var(--tu-b);display:flex;gap:12px;align-items:flex-end}
+.tu-round{width:var(--zx);height:var(--zx);border-radius:50%;border:4px solid rgba(28,43,75,.82);box-shadow:0 4px 0 rgba(28,43,75,.5);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.tu-round b{font-size:calc(var(--zx) * .3);font-weight:900;line-height:1}
+.tu-round small{font-size:13px;font-weight:900;line-height:1.1;white-space:nowrap}
+.tu-z{background:rgba(255,213,74,.8);color:var(--navy)}
+.tu-x{background:rgba(229,72,77,.8);color:#fff;margin-bottom:calc(var(--zx) * .26)}
+.tu-z.is-down{background:rgba(255,213,74,1)}
+.tu-x.is-down{background:rgba(229,72,77,1)}
+
+.tu-pill{height:var(--pill);min-width:88px;padding:0 16px!important;border-radius:999px;border:3px solid rgba(28,43,75,.82);box-shadow:0 3px 0 rgba(28,43,75,.5);
+  background:rgba(127,209,255,.82);color:var(--navy);font-size:17px;font-weight:900;white-space:nowrap}
+.tu-pill.is-down{background:rgba(127,209,255,1)}
+.tu-pill.is-disabled{opacity:.45}
+.tu-mini{position:absolute;right:var(--tu-r);bottom:calc(var(--tu-b) + var(--zx) * 1.26 + 10px);display:flex;gap:10px}
+.tu-mini.is-off{display:none}
+.tu-steal{background:rgba(255,255,255,.82)}
+.tu-top{position:absolute;right:var(--tu-r);top:var(--tu-t);display:flex;gap:10px}
+.tu-subs{background:rgba(255,213,74,.92)}
+.tu-subs.is-disabled{background:rgba(214,222,235,.9);color:#5B6B8A;opacity:1}
+.tu-menu{background:rgba(255,255,255,.92)}
+
+/* 画面の状態ごとの表示 */
+#touch-ui[data-mode="subs"] .tu-dpad,#touch-ui[data-mode="subs"] .tu-act,#touch-ui[data-mode="subs"] .tu-mini,#touch-ui[data-mode="subs"] .tu-top{display:none}
+#touch-ui[data-mode="field"] .tu-mini,#touch-ui[data-mode="field"] .tu-top{display:none}
+#touch-ui[data-mode="field-cpu"] .tu-dpad,#touch-ui[data-mode="field-cpu"] .tu-x,#touch-ui[data-mode="field-cpu"] .tu-mini,#touch-ui[data-mode="field-cpu"] .tu-top{display:none}
+
+/* タッチ端末ではステージ内の小さな操作ボタンを隠す（#touch-ui が代わり） */
+body.touch .game>.dpad,body.touch .game>.action-btns,body.touch .game>.mini-btns,
+body.touch .fv-dpad,body.touch .fv-actions,body.touch .fv-skip{display:none!important}
+body.touch .game-header .gh-btns{visibility:hidden}
+body.touch .dial-hint{display:none}
+/* スマホ横向き: 右上の さいはい/メニュー（#touch-ui）とぶつからないよう、ヘッダーを左に寄せ・打者パネルを下げる */
+body.touch.compact .game-header .gh-btns{display:none}
+body.touch.compact .game-header{padding-right:384px;padding-left:16px;justify-content:space-between}
+body.touch.compact .hteam{min-width:0}
+body.touch.compact .hteam .team-name{font-size:20px;max-width:104px}
+body.touch.compact .panel-right{top:134px}
+body.touch.compact .pitch-count{display:none}
+
+/* =========================================================
+   compact（スマホ横向き）: 試合画面の大事な文字を大きく
+   ========================================================= */
+body.compact .score-num{font-size:56px}
+body.compact .inning{font-size:32px}
+body.compact .hteam{min-width:300px;gap:10px}
+body.compact .hteam .team-name{font-size:24px;max-width:190px;overflow:hidden;text-overflow:ellipsis}
+body.compact .team-badge{width:54px;height:54px;font-size:28px}
+body.compact .lamps{gap:8px;font-size:20px}
+body.compact .lamp-row{display:flex;align-items:center;gap:3px}
+body.compact .lamp-row span{display:flex;gap:3px}
+body.compact .lamp{width:19px;height:19px}
+body.compact .runners{transform:scale(1.2)}
+body.compact .panel{gap:7px}
+body.compact .panel-name{font-size:28px}
+body.compact .role-chip{font-size:18px;padding:4px 9px}
+body.compact .hand-chip{font-size:16px}
+body.compact .cond-arrow{font-size:28px}
+body.compact .velo-row b{font-size:38px}
+body.compact .velo-row .lbl,body.compact .stamina-row .lbl,body.compact .panel .lbl{font-size:15px}
+body.compact .stamina-row b{font-size:19px;width:40px}
+body.compact .pitch-item{height:36px}
+body.compact .pitch-item span{font-size:15px}
+body.compact .pitch-count{font-size:16px}
+body.compact .pitch-count b{font-size:19px}
+body.compact .order-line{font-size:18px}
+body.compact .order-line b{font-size:21px}
+body.compact .ability-label{font-size:14px}
+body.compact .ability-value{font-size:16px}
+body.compact .ability-badge{width:46px;height:46px;font-size:26px}
+body.compact .skill-chip{font-size:15px}
+body.compact .skill-chip:nth-child(n+3){display:none}
+body.compact .panel .today{display:none}
+body.compact .ticker{height:68px;font-size:26px;left:300px;width:680px}
+body.compact .ticker-tag{font-size:18px}
+body.compact .bat-tags>span{font-size:20px}
+body.compact .overlay-sub{font-size:36px}
+body.compact .dial-pitch .dp-name{font-size:17px}
+body.compact .dial-pitch .dp-velo{font-size:14px}
+body.compact .dial-title{font-size:16px}
+body.compact .fv-type{font-size:24px}
+body.compact .fv-chip{font-size:19px}
+body.compact .fv-who{font-size:19px}
+body.compact .fv-hud{height:50px}
+body.compact .fv-prompt{font-size:24px;height:58px}
+body.compact .fv-basemark span{font-size:18px;height:34px}
+body.compact .fv-basemark span b{font-size:20px}
+
+/* =========================================================
+   compact: メニュー画面のボタンを指サイズに（縮小率 0.475 で ~40–44 CSS px）
+   ========================================================= */
+/* タイトル */
+body.compact .title .menu{left:56px;top:318px;width:760px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+body.compact .title .menu-btn{height:90px;font-size:32px;border-radius:18px}
+body.compact .title .menu-btn.primary{grid-column:1 / -1}
+body.compact .title .hero{left:836px;top:300px}
+body.compact .title .guide{display:none}
+body.compact .title .logo{top:40px}
+body.compact .title .footer{font-size:16px}
+
+/* チーム・選手 */
+body.compact .team-header{height:100px}
+body.compact .team-header h2{font-size:30px}
+body.compact .back-btn,body.compact .tab{height:82px;padding:0 26px;font-size:26px;border-radius:14px}
+body.compact .team-body{top:114px;bottom:14px}
+body.compact .roster{overflow-y:auto}
+body.compact .roster-head{font-size:16px}
+body.compact .row{height:84px;font-size:22px}
+body.compact .row .nm small{font-size:15px}
+body.compact .card-actions .btn,body.compact .btn{height:84px;font-size:26px}
+
+/* せってい */
+body.compact .settings-header{height:100px}
+body.compact .settings-header .back-btn{height:82px}
+body.compact .settings-body{top:100px;overflow-y:auto;padding:16px 80px 24px;gap:16px}
+body.compact .settings-body .seg-btn,body.compact .settings-body .seg-vol .seg-btn{height:88px;font-size:30px}
+body.compact .settings-body .set-group h3{font-size:26px}
+body.compact .settings-body .set-help{font-size:19px}
+body.compact .settings-body .set-test{height:86px;font-size:28px;flex:none}
+
+/* 結果 */
+body.compact .result-btns{bottom:24px}
+body.compact .result-btns .btn{height:90px;width:300px;font-size:28px}
+
+/* あいてを選ぶ */
+body.compact .opp-card{width:760px;max-height:700px;padding:14px 26px 14px}
+body.compact .opp-card h2{font-size:32px}
+body.compact .opp-row{height:88px;font-size:30px}
+body.compact .opp-chip{width:52px;height:52px;font-size:26px}
+body.compact .opp-cancel,body.compact .opp-go{height:90px;font-size:28px}
+body.compact .opp-cancel{width:190px}
+body.compact .opp-help{display:none}
+
+/* 采配メニュー */
+body.compact .sb-panel{left:24px;top:12px;width:1232px;height:696px}
+body.compact .sb-head{height:104px}
+body.compact .sb-head h2{font-size:30px}
+body.compact .sb-tab{height:84px;font-size:28px;min-width:180px}
+body.compact .sb-close{height:84px;font-size:24px;padding:0 22px}
+body.compact .sb-hint{font-size:20px}
+body.compact .sb-item{min-height:88px}
+body.compact .sb-nm{font-size:26px}
+body.compact .sb-mini{min-height:84px}
+body.compact .sb-mini .sb-nm{font-size:21px}
+body.compact .sb-card{min-height:96px}
+body.compact .sb-btn{height:92px;width:260px;font-size:28px}
+body.compact .sb-confirm-box{width:800px}
+body.compact .sb-confirm-box p{font-size:28px}
+body.touch .sb-foot{display:none}
+
+/* オリジナルチーム */
+body.compact .te-header{height:100px}
+body.compact .te-hbtn{height:82px;font-size:23px;padding:0 20px}
+body.compact .te-body{top:112px;bottom:12px}
+body.compact .te-seg-btn,body.compact .te-posbtn{height:76px;font-size:22px;min-width:62px}
+body.compact .te-pool .te-posbtn{min-width:54px;padding:0 4px}
+body.compact .te-search input{height:76px;font-size:max(20px,calc(17px / var(--scale,1)))}
+body.compact .te-row{min-height:88px}
+body.compact .te-nm b{font-size:23px}
+body.compact .te-nm small{font-size:15px}
+body.compact .te-act{font-size:30px;width:40px}
+body.compact .te-btn{height:82px;font-size:24px}
+body.compact .te-slot,body.compact .te-slot-main{min-height:80px}
+body.compact .te-mv{width:72px;height:72px;font-size:24px}
+body.compact .te-body3{bottom:122px}
+body.compact .te-strip{bottom:-112px;height:102px}
+body.compact .te-name{height:78px;font-size:max(20px,calc(17px / var(--scale,1)));width:300px}
+body.compact .te-sw{width:62px;height:62px}
+body.compact .te-msg{font-size:24px}
