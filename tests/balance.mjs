@@ -23,7 +23,7 @@ export function mulberry32(seed) {
 const N = Number(process.argv[2] || 50);
 const rng = mulberry32(Number(process.env.SEED || 20261004));
 const [red, blue] = TEAMS;
-const totals = { runs: 0, hits: 0, k: 0, bb: 0, hr: 0, pitches: 0 };
+const totals = { runs: 0, hits: 0, k: 0, bb: 0, hr: 0, pitches: 0, sb: 0, cs: 0, sh: 0 };
 const wins = { away: 0, home: 0, tie: 0 };
 for (let g = 0; g < N; g++) {
   const s = simulateGame(blue, red, rng);
@@ -34,6 +34,7 @@ for (let g = 0; g < N; g++) {
   totals.pitches += s.pitchCount.away + s.pitchCount.home;
   for (const st of Object.values(s.stats)) {
     totals.k += st.so; totals.bb += st.bb; totals.hr += st.hr;
+    totals.sb += st.sb || 0; totals.cs += st.cs || 0; totals.sh += st.sh || 0;
   }
   wins[ra > rh ? 'away' : rh > ra ? 'home' : 'tie'] += 1;
 }
@@ -44,4 +45,5 @@ for (const [key, [lo, hi, label]] of Object.entries(targets)) {
   const mark = avg >= lo && avg <= hi ? 'OK ' : avg >= lo * 0.85 && avg <= hi * 1.15 ? '近い' : 'NG ';
   console.log(`${mark} ${label.padEnd(4, '　')} ${avg.toFixed(2).padStart(6)}  （目標 ${lo}〜${hi}）`);
 }
+console.log(`盗塁 ${(totals.sb / N).toFixed(2)} / 盗塁死 ${(totals.cs / N).toFixed(2)} / 犠打 ${(totals.sh / N).toFixed(2)}`);
 console.log(`投球数 ${(totals.pitches / N).toFixed(1)} / 勝敗 レッド(先攻) ${wins.away} - ブルー(後攻) ${wins.home} - 分 ${wins.tie}`);

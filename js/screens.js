@@ -57,6 +57,7 @@ export function renderTitle(el, ctx) {
     <div class="menu">
       <button class="menu-btn primary" data-act="game">たいせん（1試合）</button>
       <button class="menu-btn" data-act="team">チーム・選手</button>
+      <button class="menu-btn" data-act="teamedit">オリジナルチーム</button>
       <button class="menu-btn is-disabled" disabled>ペナント（準備中）</button>
       <button class="menu-btn" data-act="settings">せってい</button>
     </div>
@@ -73,6 +74,7 @@ export function renderTitle(el, ctx) {
   </div>`;
   el.querySelector('[data-act="game"]').onclick = () => ctx.go('game');
   el.querySelector('[data-act="team"]').onclick = () => ctx.go('team');
+  el.querySelector('[data-act="teamedit"]').onclick = () => ctx.go('teamedit');
   el.querySelector('[data-act="settings"]').onclick = () => ctx.go('settings');
 }
 
@@ -124,7 +126,8 @@ export function renderTeam(el, ctx) {
   el.querySelectorAll('.row').forEach((b) => (b.onclick = () => { selectedId = b.dataset.id; renderTeam(el, ctx); }));
   const sw = el.querySelector('[data-act="switch"]');
   if (sw) sw.onclick = () => {
-    const other = ctx.teams.find((t) => t.id !== team.id) || team;
+    const i = ctx.teams.findIndex((t) => t.id === team.id);
+    const other = ctx.teams[(i + 1) % ctx.teams.length] || team;
     ctx.setUserTeam(other.id);
     selectedId = null;
     renderTeam(el, ctx);

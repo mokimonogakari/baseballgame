@@ -20,9 +20,14 @@ Team = {
 Player += {
   positions: ['遊','二','三'],  // 守れる守備位置（先頭 = 本職 = pos）。投手は ['投']
   pitching: { role: 'starter'|'reliever'|'closer', velocity, control, stamina, pitches },  // 投手のみ
+  //   pitches: [{ type, name, level }]  level = 変化量 0〜7（0 = 覚えているがほぼ曲がらない）
   model: '…',                  // 能力値のモデルにした実在選手タイプ（実名なし）
+  skills: ['盗塁◎', …],        // 1〜4個。SKILLS のキーのみ
 }
 ```
+
+`TEAMS` は4チーム: `red` レッドスターズ（#E5484D）, `blue` ブルーウェーブス（#1E88E5）, `green` グリーンファイターズ（#2E9E55、機動力・守備型、id g1〜g19）, `yellow` イエローサンダース（#F2B705、強打・一発型、id y1〜y19）。各19人、同じ形（打順9・投手6・控え5）。
+data.js の追加 export: `SKILLS`, `PITCH_DIRECTIONS`, `playerCost`（engine.js からも再 export）。`PITCH_TYPES` に `twoseam` `cutter` `splitter` `palm` `sinker` を追加（各 `fastballFamily?`）。
 
 | | レッドスターズ | ブルーウェーブス |
 |---|---|---|
@@ -186,7 +191,7 @@ fielding = {
 
 ```js
 {
-  kind: 'hit' | 'out' | 'double_play' | 'error' | 'fielders_choice' | 'sac_fly' | 'hr',  // 'hr' = ランニングホームラン
+  kind: 'hit' | 'out' | 'double_play' | 'error' | 'fielders_choice' | 'sac_fly' | 'sac_bunt' | 'hr',  // 'hr' = ランニングホームラン、'sac_bunt' は 7.5
   text: '霧島 健、ライト前ヒット！ 二塁ランナー一気にホームイン！ 1点追加！',
   runs,                // このプレーの得点
   bases,               // 安打の塁打数 1-3（4 = ランニングHR）、安打以外は 0
@@ -219,13 +224,164 @@ suggestThrow(state, ball, fielding) → 1|2|3|4|null   // その守備結果で 
 
 ## 6. バランス（tests/balance.mjs、CPU 同士 50 試合平均、両軍合計）
 
+CPU 打者は `chooseSwing` が返す **ミートカーソル入力（pos）** で打ち、調子・特殊能力・CPU 盗塁込み。
+
 | 項目 | 目標 | 結果（SEED 20261004） |
 |---|---|---|
-| 得点 | 6〜9 | 7.40 |
-| 安打 | 16〜20 | 17.82 |
-| 三振 | 10〜14 | 13.24 |
-| 四球 | 4〜7 | 5.40 |
-| 本塁打 | 1〜3 | 1.22 |
+| 得点 | 6〜9 | 8.46 |
+| 安打 | 16〜20 | 18.32 |
+| 三振 | 10〜14 | 13.94 |
+| 四球 | 4〜7 | 5.62 |
+| 本塁打 | 1〜3 | 1.44 |
 
-（他シードでも得点 7.4〜7.8、安打 17.8〜18.7。併殺 約2個/試合、エラー 約0.5個/試合、二塁走者の単打での生還 約70%、三塁打はまれで多くは二塁打になる。）
-調整係数は `TUNING`（打球・守備・走塁の係数を含む）。`TUNE='{"pivot":1.6}' node tests/balance.mjs` で一時上書きできます。
+（SEED 7 / 123 / 99 / 1 でも5項目すべて目標内: 得点 8.3〜8.7、安打 18.2〜19.0、三振 12.8〜13.6。盗塁 約0.8〜1.0個/試合、盗塁死 約0.1。
+緑・黄を含む他の組み合わせ（100試合）: 得点 8.3〜9.0、安打 18.6〜19.7。）
+調整係数は `TUNING`（打球・守備・走塁・カーソル・盗塁の係数を含む）。`TUNE='{"cursorDist":1.7}' node tests/balance.mjs [試合数]` で一時上書きできます。
+カーソル導入時の調整: `posNoiseBase 0.02` `posNoiseContact 0.32`（CPU のカーソル誤差 σ、セル）、`cursorDist 1.9`、`swingInZone [0.72,0.80,0.92]`。
+
+
+---
+
+## 7. パワプロ系システム（特殊能力・調子・ミートカーソル・バント・盗塁・球種・コスト）
+
+### 7.1 新しい export 一覧
+
+```js
+// data.js（engine.js からも再 export）
+SKILLS            = { [name]: { type:'gold'|'blue'|'red', target:'batter'|'pitcher'|'any', desc } }
+PITCH_DIRECTIONS  = { fastball:'↑', twoseam:'→', slider:'←', cutter:'←', curve:'↙', fork:'↓', splitter:'↓', palm:'↓', shoot:'→', sinker:'↘', changeup:'↓' }
+playerCost(player) → 1..15
+// engine.js
+CONDITIONS        = { 絶好調:{label,mult:1.10,arrow:'↑',color:'#FF4FA3',weight:10}, 好調:{1.05,'↗','#F57C00',25}, 普通:{1.00,'→','#FDD835',35},
+                      不調:{0.95,'↘','#1E88E5',20}, 絶不調:{0.90,'↓','#7E57C2',10} }   // キーの順 = 良い順
+CONDITION_LABELS  = ['絶好調','好調','普通','不調','絶不調']
+CONDITION_CANCEL_RED, CONDITION_KEEP_BLUE   // 調子による特殊能力の打ち消し（7.3）
+SKILL_FX          = { [name]: { when?, strike?, foul?, go?, fo?, single?, double?, triple?, hr?, hits?, …その他の数値 } }
+conditionOf(state, playerId) → '絶好調'|…|'普通'
+activeSkills(state, player) → string[]       // 調子で打ち消された後の有効な特殊能力
+meetCursor(batter, mode, state?) → { rx, ry, coreR }
+pitchBreak(pitcher, type) → { dx, dy, level, dir, nobi }
+pitchDirection(type, throws) → '←'|'↙'|'↓'|'↘'|'→'|'↑'
+attemptSteal(state, side, baseIndex) → state
+cancelSteal(state) → state
+cpuSteal(state, rng?) → { state, attempted }
+stealChance(state, baseIndex) → 0..1      // 成功率の目安（UI 表示・CPU 判断用）
+swingProbabilities(…, fat, ctx?)          // 9番目の引数 ctx を追加、dist は小数可
+```
+
+`state` の追加フィールド: `state.condition = { [playerId]: '絶好調'|… }`, `state.pendingSteal = null | { side, baseIndex, runnerId, cpu? }`, `state.stealChecked`（内部用）。
+`state.stats[id]` に `sb`（盗塁）, `cs`（盗塁死）, `sh`（犠打）を追加。`summary(state).steal` = pendingSteal の写し or null。
+`pitchContact` の戻り値に `steal`（成功/失敗の steal イベント or null）を追加。
+
+### 7.2 特殊能力（SKILLS / SKILL_FX）
+
+打席結果の重み（OUTCOMES 順: strike=空振り, foul, go=ゴロアウト, fo=フライアウト, single, double, triple, hr、hits=安打4種）に乗算してから正規化します。
+`swingProbabilities` の `ctx.state` があれば状況依存（when）の能力も判定します（無ければ when 付きのうち 対左・球種・低め以外は発動しない）。
+
+| 特殊能力 | 種 | 発動条件 (when) | 効果 |
+|---|---|---|---|
+| チャンス◎ | 青 | 得点圏（二・三塁に走者） | hits×1.15, strike×0.90 |
+| チャンス× | 赤 | 得点圏 | hits×0.87, strike×1.10 |
+| 対左投手◎ | 青 | 左投手 | hits×1.12, strike×0.92 |
+| パワーヒッター | 青 | 常時 | hr×1.30, fo×1.10, go×0.90、打球角度 +0.15 |
+| アベレージヒッター | 青 | 常時 | single×1.12, double×1.08 |
+| 広角打法 | 青 | 常時 | hr×1.10, double×1.05、引っ張り方向の偏り（±7°）なし |
+| 流し打ち | 青 | 常時 | single×1.06、タイミングが遅い時さらに逆方向へ 8° |
+| 初球○ | 青 | 0-0 | hits×1.20, strike×0.90 |
+| 粘り打ち | 青 | 2ストライク | foul×1.40, strike×0.85 |
+| 三振 | 赤 | 常時 | strike×1.15 |
+| 併殺 | 赤 | 一塁走者あり・2死未満 | go×1.15、一塁到達 +0.12 秒 |
+| 天才打者 | 金 | 常時 | strike×0.80, hits×1.15, foul×1.10、ミートカーソル ×1.10 |
+| 怪力 | 金 | 常時 | hr×1.60, double×1.15 |
+| 選球眼 | 青 | 常時 | CPU のボール球スイング率 ×0.75 |
+| バント◎ | 青 | バント | ファウル率 -0.10、小フライ率 -0.03、打球が弱く両ラインへ |
+| 盗塁◎ | 青 | 盗塁 | スタート -0.12 秒、CPU の盗塁判断で走力 +10 |
+| 走塁◎ | 青 | 走塁・盗塁 | 走力 +10、進塁判断の余裕 -0.10 秒（積極的） |
+| 送球◎ | 青 | 守備・捕手 | 送球速度 +3 m/s、握り替え -0.08 秒（盗塁阻止にも） |
+| キャッチャー◎ | 青 | 捕手 | 盗塁阻止の握り替え -0.06 秒 |
+| エラー | 赤 | 守備 | エラー率 ×2 |
+| ノビ◎ | 青 | ストレート | strike×1.25, fo×1.10, hits×0.92（`event.pitch.nobi = true`） |
+| キレ◎ | 青 | 変化球（ストレート系以外） | strike×1.20 |
+| 奪三振 | 青 | 2ストライク | strike×1.15 |
+| 対ピンチ◎ | 青 | 得点圏 | hits×0.88, strike×1.10 |
+| 重い球 | 青 | 常時 | hr×0.70, double×0.85, go×1.10 |
+| 打たれ強さ◎ | 青 | 走者あり | hits×0.94 |
+| 低め◎ | 青 | 球が低め（y>0.5）/ 低めを狙う | go×1.10 / 制球誤差 ×0.85（zone.y=2 を狙う時） |
+| 対左打者◎ | 青 | 左打者 | hits×0.90, strike×1.08 |
+| クイック◎ | 青 | 盗塁 | 投球動作 -0.15 秒 |
+| 牽制◎ | 青 | 盗塁 | 走者のリード -0.8 m |
+| 一発 | 赤 | 常時 | hr×1.40 |
+| 四球 | 赤 | 常時 | 制球誤差 ×1.15 |
+| スロースターター | 赤 | 1〜2回 | hits×1.08、制球誤差 ×1.10 |
+| 怪物球威 | 金 | 常時 | strike×1.20, hits×0.88, hr×0.60 |
+
+### 7.3 調子（CONDITIONS）
+
+- `createGame(home, away, { rng?, seed?, conditions? })`: 全選手に 絶好調/好調/普通/不調/絶不調 を重み 10/25/35/20/10 で抽選し `state.condition[playerId]` に保存。
+  乱数は `rng` → `seed`（mulberry32）→ どちらも無ければ **チーム id から決まる固定シード**（同じ対戦なら同じ調子）。毎試合変えたい UI は `{ rng: Math.random }` を渡すこと。`conditions` で一部の選手を上書き。`simulateGame` は自身の rng を渡す。
+- 効果: 打者は ミート・パワー ×mult（`swingProbabilities` の能力補正とミートカーソルの大きさ、CPU のカーソル誤差）。投手は コントロール ×mult（制球誤差）と 球速能力 ×mult（空振り補正）。
+- 特殊能力の打ち消し（`activeSkills`）: **絶好調** は赤特 `三振` `チャンス×` `四球` `スロースターター` `一発` を無効化。**絶不調** は青特・金特を無効化（ただし走塁・守備系 `盗塁◎` `走塁◎` `送球◎` `キャッチャー◎` `クイック◎` `牽制◎` `バント◎` は有効のまま）。
+
+### 7.4 ミートカーソル（連続座標の打撃入力）
+
+```js
+batInput = { mode: 'meet'|'power'|'bunt', pos: { x, y }, timing: -1..1, zone? }
+// pos: セル単位の連続座標。ゾーン中心 (0,0)、+x = 画面右、+y = 画面下、ゾーンは |x|,|y| <= 1.5（範囲の目安 -2..2）
+// pos が無ければ従来どおり zone（0..2 のセル）で判定。timing は負 = 早い（振り遅れは正）
+```
+
+`meetCursor(batter, mode, state)`: `rx = 0.35 + 0.50 × (ミート×調子 − 1)/98`（ミート1 → 0.35、99 → 0.85）、天才打者 ×1.10、強振 ×0.7、バント ×1.1。`ry = rx × 0.75`、`coreR = rx × 0.3`（芯の円）。
+
+判定（ボールの到達位置 loc とカーソル中心 pos の差 dx, dy）:
+1. `nd = √((dx/rx)² + (dy/ry)²)`。**nd > 1 → 空振り**（ただし nd ≤ 1.15 の縁はファウルチップ: 50% でファウル）。
+2. 接触の質 `event.contactTier`: `'shin2'`（真芯: 距離 ≤ coreR/2）/ `'shin'`（芯: ≤ coreR）/ `'other'`。zone 入力は同じセル = 'shin'、それ以外 'other'。
+3. 従来の距離帯（0/1/2）へ連続的に写す: 真芯 → 0、それ以外 `dist = 1.9 × clamp((nd − 0.15)/0.85, 0, 1)`（0..1.9、係数表の隣り合う距離帯を線形補間）。真芯は安打 ×1.12・空振り ×0.85。
+4. 上下: **ボールがカーソル中心より上（dy < 0）→ バットがボールの下側に当たりフライ、下 → ゴロ**。`lift = −dy/ry` に弾道 `(trajectory−2)×0.15`、パワーヒッター +0.15 を足し、ゴロアウト ×exp(−0.45·lift)・フライアウト ×exp(+0.45·lift)（カーソル入力のみ）、打球の種類（ゴロ/ライナー/フライ）の選択もずらす。
+5. 方向: タイミングが早い → 引っ張り（`引っ張り側 × −timing × 20°`）、遅い → 流し。カーソルの横ずれ `dx/rx × 10°`（画面右へずれたボールは右方向）。早め（−0.6 < timing < −0.1）で内角を引っ張ると double/hr ×1.1。
+6. event に `dist`（小数）, `band`, `mode`, `contactTier`, `cursor: {rx,ry,coreR}`, `nd` が付く。
+
+CPU（`chooseSwing`）は `{ zone, pos, mode, timing }` を返す。`pos = 実際の位置 + 正規乱数 × (0.02 + (100 − ミート×調子)/100 × 0.32)`。
+
+### 7.5 バント（mode: 'bunt'）
+
+- カーソルは ×1.1。nd > 1 は空振り（縁ではファウル 70%）。当たれば ファウル率 `0.22 + 0.22·nd − 0.10·c − バント◎0.10 (+タイミング帯1: 0.04 / 帯2: 0.12、ボール球 +0.10)`、小フライ率 `0.05 + 0.07·nd − バント◎0.03`、残りがフェアのバント（c = (ミート×調子−50)/49）。
+- 打球: ゴロ（`ball.bunt = true`、方向 ±30°、打球速度 約32〜60 km/h、バント◎ 28〜45 km/h で両ラインへ）または捕手・投手付近の小フライ。通常どおり `autoField` / `resolveBattedBall` で処理（pitchContact の event は `kind:'inplay', text:'バント！', bunt:true`）。
+- 走者: フォースの走者は進み、二塁走者（フォースでない）も三塁へ、三塁走者は自重。
+- **送りバント**: 打者が一塁でアウト・走者アウトなし・2死未満・走者が進塁 → `event.kind = 'sac_bunt'`（`sacBunt: true`、打数に数えず `stats.sh += 1`）。テキスト「送りバント成功！」。打者がセーフなら 'hit'（バントヒット）。
+- 2ストライク後のバントファウル → 三振（`kind:'strikeout'`, `buntFoulOut: true`、「スリーバント失敗！」）。
+
+### 7.6 盗塁・走塁
+
+- `attemptSteal(state, side, baseIndex)`: 0 = 一塁走者が二塁へ、1 = 二塁走者が三塁へ。攻撃中のチームのみ。走者がいない・次の塁が埋まっている・`state.pending`・試合終了なら throw。`state.pendingSteal` を設定（次の1球で解決）。`cancelSteal(state)` で取り消し。
+- 次の `pitchContact`（`resolvePitch`）:
+  - **見送り/空振り（ボール・ストライク）**: 走者と捕手の送球の競争。`event.steal = { kind:'steal'|'caught_stealing', side, runnerId, catcherId, from, to, safe, runnerTime, throwTime, text }`（'盗塁成功！' / '刺した！ 盗塁失敗。'）。pitch の event テキストにも追記、`state.log` には pitch イベントの直後に steal イベントが入る。戻り値 `steal` にも同じもの。
+    - 走者: `0.30（盗塁◎ −0.12）+ (27.4 − リード) / (7.0 + 1.6·走力/99) + 0.10`、リード 一塁 3.6 m / 二塁 5.5 m（牽制◎ −0.8 m）、走塁◎ 走力 +10
+    - 守備: `投球 1.35（クイック◎ −0.15、変化球 +0.10）+ 握り替え 0.85 − 0.25·捕球/99（送球◎ −0.08、キャッチャー◎ −0.06）+ 距離/(24 + 12·肩/99 [+3 送球◎]) + タッチ 0.15`（大きく外れた球 +0.25）。両者 σ0.08 秒の誤差。
+    - 三振と同時の盗塁死（三振ゲッツー）あり。盗塁死で3アウト目なら打者は打順を進めずに次の回の先頭（カウントはリセット）、`event.endHalf = true`。
+    - 四球（`steal_cancelled`, reason 'walk'。押し出しの走者は進む）、2死からの三振（'inning_over'）は盗塁なし。
+  - **ファウル**: 走者は戻る（`event.steal.kind = 'steal_cancelled'`, reason 'foul'）。
+  - **打球**: エンドラン状態（`event.steal.kind = 'running'`、`ball.running = [runnerId]`）。打った瞬間にスタート済み・リード +6 m で進塁しやすい（フライ捕球時は帰塁扱い）。
+- CPU（`userSide` でない攻撃側）は `pitchContact` の中で自動で盗塁を判断（`pitchInput.noSteal: true` で抑止）。条件: 2ストライク未満・3ボール未満・3点差以内、走力（盗塁◎ +10）≥ 75（三盗は 85、2死未満）、`stealChance ≥ 0.55`、1球あたり確率 `0.35 × (走力 − 70)/30`。投球前に走者のスタートを見せたい UI は先に `cpuSteal(state, rng)` を呼ぶ（その state では pitchContact は再判断しない）。
+
+### 7.7 球種（PITCH_DIRECTIONS / pitchBreak）
+
+- 変化方向はパワプロ表記（投手目線）で、変化球は `←` `↙` `↓` `↘` `→` の5方向、ストレートは `↑`（ノビ）。左投手は左右反転（`pitchDirection(type, '左')`）。
+  スライダー ←, カットボール ←（小）, カーブ ↙, フォーク ↓, スプリット ↓, パーム ↓, チェンジアップ ↓, シンカー ↘, シュート →, ツーシーム →（小）。
+- 画面上の実際の変化（`dx, dy`、打者カメラ視点で +x = 右、+y = 下）は矢印と左右が逆（例: 右投手のスライダー '←' は dx > 0）。
+- `pitchBreak(pitcher, type)` = PITCH_TYPES の dx/dy × `(0.7 + 0.1 × level)`（level 0 は ×0.4、ストレートは変化なし）、左投手は dx 反転。`pitchLocation`・CPU の配球/打撃予想はこの値を使う。**UI で球の軌道を描く場合も pitchBreak を使うこと**（PITCH_TYPES の dx/dy は level 3 の値）。
+- 見切り難度: `read + 0.025 × (level − 3)`。変化量は 0〜7（data.js の旧 1〜4 は 2/3/5/6 に換算済み）。
+- ストレート系（`fastballFamily`: ストレート・ツーシーム）はスタミナ消費 0.5、CPU は3ボールでストレート系を増やし、2ストライクで変化球を増やす。
+- `nobi`: ノビ◎ の投手のストレート（`pitchBreak().nobi`, `event.pitch.nobi`）。
+
+### 7.8 選手コスト（playerCost）
+
+表示用の 1〜15 の整数（チームコストモードの上限は撤廃済み）。
+
+```
+野手: 総合 = ミート×0.30 + パワー×0.30 + 走力×0.14 + 守備×0.12 + 肩×0.07 + 捕球×0.07
+投手: 総合 = 球速能力×0.40 + コントロール×0.40 + スタミナ×0.15 + 変化量合計×1.2 + 6   （球速能力 = (km/h − 120)/50 × 99）
+特殊能力: 金 +6、青 +1.5、赤 −2.5（野手は野手用、投手は投手用の能力のみ）
+コスト = clamp(round((総合 − 40) / 3.2), 1, 15)
+```
+
+各チーム19人の合計は 157〜160（25人換算 約207〜211）。主力野手 7〜11、控え 3〜6、エース・抑え 12〜15。

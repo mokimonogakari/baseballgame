@@ -26,9 +26,10 @@ const IN = { type: 'fastball', zone: { x: 1, y: 1 }, loc: { x: 0, y: 0 } };
 const OUT = { type: 'fastball', zone: { x: 2, y: 2 }, loc: { x: 2.5, y: 2.5 } };
 const SWING = { zone: { x: 1, y: 1 }, mode: 'meet', timing: 0 };
 
-test('データ: 38人、各チーム打順9人・投手6人・控え野手5人、能力値は1-99', () => {
-  assert.equal(TEAMS.length, 2);
-  assert.equal(TEAMS.reduce((n, t) => n + t.players.length, 0), 38);
+test('データ: 4チーム76人、各チーム打順9人・投手6人・控え野手5人、能力値は1-99', () => {
+  assert.equal(TEAMS.length, 4);
+  assert.deepEqual(TEAMS.map((t) => t.id), ['red', 'blue', 'green', 'yellow']);
+  assert.equal(TEAMS.reduce((n, t) => n + t.players.length, 0), 76);
   const ids = new Set();
   for (const t of TEAMS) {
     assert.equal(t.lineup.length, 9);
@@ -57,7 +58,10 @@ test('データ: 38人、各チーム打順9人・投手6人・控え野手5人�
       if (p.pitching) {
         assert.ok(p.pitching.control >= 1 && p.pitching.control <= 99);
         assert.ok(p.pitching.stamina >= 1 && p.pitching.stamina <= 99);
-        for (const q of p.pitching.pitches) assert.ok(PITCH_TYPES[q.type], q.type);
+        for (const q of p.pitching.pitches) {
+          assert.ok(PITCH_TYPES[q.type], q.type);
+          assert.ok(Number.isInteger(q.level) && q.level >= 0 && q.level <= 7, `${p.name} ${q.type} level`);
+        }
       }
     }
   }
@@ -174,3 +178,4 @@ test('9回裏はホームリードなら行わない', () => {
 
 // 'node --test tests/' は tests/package.json の main（このファイル）だけを実行するため、追加のテストをここから読み込む
 import './subs-fielding.test.mjs';
+import './powerpro.test.mjs';

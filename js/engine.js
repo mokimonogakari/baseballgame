@@ -5,7 +5,9 @@
  * 打席判定は docs/BALANCE.md の係数表・能力補正・投球位置モデルに従う。
  * 打球・守備・走塁・選手交代の API は docs/ENGINE-API.md を参照。
  */
-import { PITCH_TYPES } from './data.js';
+import { PITCH_TYPES, PITCH_DIRECTIONS, SKILLS, playerCost } from './data.js';
+
+export { PITCH_DIRECTIONS, SKILLS, playerCost };
 
 /* ------------------------------------------------------------------ */
 /* 定数・係数                                                          */
@@ -45,7 +47,7 @@ export const TUNING = {
   outZoneStrike: 1.4, outZoneOther: 0.7,
   sigmaBase: 0.72, sigmaK: 0.20,
   // CPU 打者
-  swingInZone: [0.66, 0.76, 0.88], swingOutZone: [0.18, 0.24, 0.36],
+  swingInZone: [0.72, 0.80, 0.92], swingOutZone: [0.18, 0.24, 0.36],
   guessNoiseBase: 0.0, guessNoiseContact: 0.55,
   timingBase: 0.08, timingVel: 0.15, timingContact: 0.25, timingRead: 0.25,
   powerModeRate: 0.40,
@@ -68,9 +70,143 @@ export const TUNING = {
   pivot: 1.45, throwNoise: 0.2, throwAdvance: 1.4,
   pitcherReact: 0.35, pitcherReach: 0.6,
   errBase: 0.012, errDelay: 1.5, offPosPenalty: 25,
+  // ミートカーソル（連続座標の打撃入力 batInput.pos）
+  cursorMin: 0.35, cursorMax: 0.85, cursorRy: 0.75, cursorCore: 0.3, cursorPower: 0.7, cursorBunt: 1.1,
+  cursorDist: 1.9, cursorCoreN: 0.15, cursorRim: 0.15, rimFoul: 0.5, vyK: 0.45, trajLift: 0.15,
+  timingDir: 20, hxDir: 10, oppoDir: 8,
+  posNoiseBase: 0.02, posNoiseContact: 0.32,
+  // バント
+  buntFoul: 0.22, buntFoulNd: 0.22, buntFoulC: 0.10, buntPop: 0.05, buntPopNd: 0.07, buntRimFoul: 0.7,
+  // 盗塁（秒・m）
+  stealLead1: 3.6, stealLead2: 5.5, stealJump: 0.30, stealSlide: 0.10, stealNoise: 0.08,
+  stealDelivery: 1.35, stealBreaking: 0.10, stealPop: 0.85, stealPopC: 0.25, stealTag: 0.15, stealWild: 0.25,
+  runningLead: 6.0,
+  cpuStealSpeed: 75, cpuStealRate: 0.35, cpuStealDeficit: 3, cpuStealMin: 0.55,
   // CPU 采配
   phInning: 7, phMargin: 10, phWeak: 108, phRate: 0.75, prInning: 8, prSlow: 55, prFast: 80, prRate: 0.8,
 };
+
+/**
+ * 調子（createGame で全選手に割り当て、state.condition[playerId]）。
+ * mult: 野手はミート・パワー（ミートカーソルの大きさも）、投手はコントロール・球威（球速能力）に掛かる倍率。
+ * weight: 抽選の重み（10/25/35/20/10）。キーの並びが良い順。
+ */
+export const CONDITIONS = {
+  絶好調: { label: '絶好調', mult: 1.10, arrow: '↑', color: '#FF4FA3', weight: 10 },
+  好調: { label: '好調', mult: 1.05, arrow: '↗', color: '#F57C00', weight: 25 },
+  普通: { label: '普通', mult: 1.00, arrow: '→', color: '#FDD835', weight: 35 },
+  不調: { label: '不調', mult: 0.95, arrow: '↘', color: '#1E88E5', weight: 20 },
+  絶不調: { label: '絶不調', mult: 0.90, arrow: '↓', color: '#7E57C2', weight: 10 },
+};
+/** 調子のラベル（良い順） */
+export const CONDITION_LABELS = Object.keys(CONDITIONS);
+
+/**
+ * 特殊能力の効果（打席結果の重み倍率など）。キー:
+ *   strike=空振り, foul, go=ゴロアウト, fo=フライアウト, single, double, triple, hr, hits=安打4種すべて（OUTCOMES の重みに乗算後に正規化）
+ *   cursor=ミートカーソルの大きさ倍率, sigma=制球誤差の倍率, swingOut=CPU のボール球スイング率倍率
+ *   when: 発動条件（docs/ENGINE-API.md 参照）
+ * 盗塁・走塁・守備・バントの効果は STEAL/送球などの各処理に記述（SKILL_FX の数値を参照）。
+ */
+export const SKILL_FX = {
+  // 打者
+  'チャンス◎': { when: 'risp', hits: 1.15, strike: 0.90 },
+  'チャンス×': { when: 'risp', hits: 0.87, strike: 1.10 },
+  '対左投手◎': { when: 'vsLHP', hits: 1.12, strike: 0.92 },
+  'パワーヒッター': { hr: 1.30, fo: 1.10, go: 0.90, lift: 0.15 },
+  'アベレージヒッター': { single: 1.12, double: 1.08 },
+  '広角打法': { hr: 1.10, double: 1.05, noPull: true },
+  '流し打ち': { single: 1.06, oppo: 8 },
+  '初球○': { when: 'firstPitch', hits: 1.20, strike: 0.90 },
+  '粘り打ち': { when: 'twoStrikes', foul: 1.40, strike: 0.85 },
+  'バント◎': { buntFoul: -0.10, buntPop: -0.03 },
+  '選球眼': { swingOut: 0.75 },
+  '三振': { strike: 1.15 },
+  '併殺': { when: 'dpChance', go: 1.15, to1B: 0.12 },
+  'エラー': { error: 2.0 },
+  '送球◎': { throwV: 3, transfer: 0.08 },
+  '盗塁◎': { stealJump: 0.12, cpuSteal: 10 },
+  '走塁◎': { runSpeed: 10, margin: 0.10 },
+  'キャッチャー◎': { pop: 0.06 },
+  '天才打者': { strike: 0.80, hits: 1.15, foul: 1.10, cursor: 1.10 },
+  '怪力': { hr: 1.60, double: 1.15 },
+  // 投手
+  'ノビ◎': { when: 'fastball', strike: 1.25, fo: 1.10, hits: 0.92 },
+  'キレ◎': { when: 'breaking', strike: 1.20 },
+  '奪三振': { when: 'twoStrikes', strike: 1.15 },
+  '対ピンチ◎': { when: 'risp', hits: 0.88, strike: 1.10 },
+  '重い球': { hr: 0.70, double: 0.85, go: 1.10 },
+  'クイック◎': { delivery: 0.15 },
+  '牽制◎': { lead: 0.8 },
+  '打たれ強さ◎': { when: 'runners', hits: 0.94 },
+  '低め◎': { when: 'low', go: 1.10, sigmaLow: 0.85 },
+  '対左打者◎': { when: 'vsLHB', hits: 0.90, strike: 1.08 },
+  '一発': { hr: 1.40 },
+  '四球': { sigma: 1.15 },
+  'スロースターター': { when: 'early', hits: 1.08, sigma: 1.10 },
+  '怪物球威': { strike: 1.20, hits: 0.88, hr: 0.60 },
+};
+const FX_IDX = { strike: [1], foul: [2], go: [3], fo: [4], single: [5], double: [6], triple: [7], hr: [8], hits: [5, 6, 7, 8] };
+
+/** 絶好調で打ち消される赤特 */
+export const CONDITION_CANCEL_RED = ['三振', 'チャンス×', '四球', 'スロースターター', '一発'];
+/** 絶不調でも有効な青特（走塁・守備系）。それ以外の青特は絶不調で無効 */
+export const CONDITION_KEEP_BLUE = ['盗塁◎', '走塁◎', '送球◎', 'キャッチャー◎', 'クイック◎', '牽制◎', 'バント◎'];
+
+/**
+ * 選手の特殊能力が有効か（調子による打ち消しを反映。state 省略時は持っていれば有効）。
+ * 絶好調: CONDITION_CANCEL_RED の赤特が無効。絶不調: CONDITION_KEEP_BLUE 以外の青特・金特が無効。
+ */
+function skillOn(p, name, s = null) {
+  if (!p?.skills?.includes(name)) return false;
+  const c = s?.condition?.[p.id];
+  if (c === '絶好調' && CONDITION_CANCEL_RED.includes(name)) return false;
+  if (c === '絶不調' && SKILLS[name]?.type !== 'red' && !CONDITION_KEEP_BLUE.includes(name)) return false;
+  return true;
+}
+/**
+ * 選手の有効な特殊能力の一覧（調子による打ち消し後）
+ * @param {object} state
+ * @param {object} player
+ * @returns {string[]}
+ */
+export function activeSkills(state, player) {
+  return (player?.skills || []).filter((n) => skillOn(player, n, state));
+}
+const hasSkill = (p, name, s = null) => skillOn(p, name, s);
+/** 特殊能力の数値（持っていなければ def） */
+const fxNum = (p, name, key, def = 0, s = null) => (skillOn(p, name, s) ? SKILL_FX[name][key] : def);
+
+/** シード付き乱数（mulberry32） */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+/** 文字列 → 32bit ハッシュ（既定の調子シード） */
+function hashStr(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+/**
+ * 選手の調子（state.condition。未設定なら '普通'）
+ * @param {object} state
+ * @param {string} playerId
+ * @returns {'絶好調'|'好調'|'普通'|'不調'|'絶不調'}
+ */
+export function conditionOf(state, playerId) {
+  const c = state?.condition?.[playerId];
+  return CONDITIONS[c] ? c : '普通';
+}
+/** 調子の倍率 */
+const condMult = (s, id) => CONDITIONS[s?.condition?.[id]]?.mult ?? 1;
 
 /** 守備位置（打順表示・守備交代で使う記号） */
 export const POSITIONS = ['投', '捕', '一', '二', '三', '遊', '左', '中', '右'];
@@ -205,20 +341,28 @@ function benchOf(team) {
  * 新しい試合を作成
  * @param {object} homeTeam 後攻チーム
  * @param {object} awayTeam 先攻チーム
- * @param {{innings?:number, userSide?:'away'|'home'|null}} [opts]
+ * @param {{innings?:number, userSide?:'away'|'home'|null, rng?:()=>number, seed?:number, conditions?:Object<string,string>}} [opts]
+ *   rng: 調子の抽選に使う乱数（省略時は seed、seed も省略時はチーム id から決まる固定シード）。
+ *   conditions: { playerId: '絶好調'|… } で調子を上書き（指定した選手のみ）。
  * @returns {object} GameState
  */
-export function createGame(homeTeam, awayTeam, { innings = 9, userSide = 'away' } = {}) {
+export function createGame(homeTeam, awayTeam, { innings = 9, userSide = 'away', rng, seed, conditions } = {}) {
   const teams = { away: structuredClone(awayTeam), home: structuredClone(homeTeam) };
   const stats = {};
   const stamina = {};
+  const condition = {};
   const positions = { away: {}, home: {} };
+  const crng = typeof rng === 'function' ? rng
+    : mulberry32(seed != null ? Number(seed) : hashStr(`${teams.away.id}|${teams.home.id}`));
+  const cw = CONDITION_LABELS.map((k) => CONDITIONS[k].weight);
   for (const side of ['away', 'home']) {
     const team = teams[side];
     team.bench = [...benchOf(team)];
     for (const p of team.players) {
-      stats[p.id] = { ab: 0, h: 0, hr: 0, rbi: 0, so: 0, bb: 0, ip_outs: 0, er: 0, k: 0 };
+      stats[p.id] = { ab: 0, h: 0, hr: 0, rbi: 0, so: 0, bb: 0, ip_outs: 0, er: 0, k: 0, sb: 0, cs: 0, sh: 0 };
       if (p.pitching) stamina[p.id] = p.pitching.stamina;
+      condition[p.id] = CONDITION_LABELS[pickWeighted(cw, crng)];
+      if (conditions && CONDITIONS[conditions[p.id]]) condition[p.id] = conditions[p.id];
     }
     for (const id of team.lineup) {
       const p = findPlayer(team, id);
@@ -241,6 +385,10 @@ export function createGame(homeTeam, awayTeam, { innings = 9, userSide = 'away' 
     // 自動で登板させた投手（1球も投げる前なら changePitcher で退いても removed にしない）
     provisional: { away: null, home: null },
     pending: null, ballSeq: 0,
+    // 調子 { playerId: '絶好調'|'好調'|'普通'|'不調'|'絶不調' }
+    condition,
+    // 盗塁の予約（attemptSteal）。次の pitchContact で解決
+    pendingSteal: null,
     teams, userSide,
   };
 }
@@ -298,6 +446,7 @@ export function summary(state) {
     score: { away: total(state, 'away'), home: total(state, 'home') },
     batting: side,
     pending: !!state.pending,
+    steal: state.pendingSteal ? { ...state.pendingSteal } : null,
   };
 }
 
@@ -311,8 +460,45 @@ function fatigue(s, pitcher) {
   return st < 20 ? (20 - st) / 20 : 0;
 }
 
+/** 投手の球種の変化量 level（持ち球に無ければ 3、ストレートは 0） */
+function pitchLevel(pitcher, type) {
+  if (type === 'fastball') return 0;
+  return (pitcher?.pitching?.pitches || []).find((q) => q.type === type)?.level ?? 3;
+}
+
+/**
+ * 球種の変化（ゾーンセル単位、打者カメラの画面で +x=右, +y=下）。変化量 level で拡大縮小し、左投手は dx を反転。
+ * scale = 0.7 + 0.1 × level（level 3 = PITCH_TYPES の値、level 7 = ×1.4、level 1 = ×0.8、level 0 = ×0.4）
+ * @param {object} pitcher 投手（throws, pitching.pitches, skills）
+ * @param {string} type 球種
+ * @returns {{dx:number, dy:number, level:number, dir:string, nobi:boolean}}
+ */
+export function pitchBreak(pitcher, type) {
+  const pt = PITCH_TYPES[type] || PITCH_TYPES.fastball;
+  const lv = pitchLevel(pitcher, PITCH_TYPES[type] ? type : 'fastball');
+  const scale = type === 'fastball' ? 1 : lv <= 0 ? 0.4 : 0.7 + 0.1 * lv;
+  const flip = pitcher?.throws === '左' ? -1 : 1;
+  return {
+    dx: pt.dx * scale * flip, dy: pt.dy * scale, level: lv,
+    dir: pitchDirection(type, pitcher?.throws),
+    nobi: type === 'fastball' && hasSkill(pitcher, 'ノビ◎'),
+  };
+}
+
+const MIRROR = { '←': '→', '→': '←', '↙': '↘', '↘': '↙', '↑': '↑', '↓': '↓' };
+/**
+ * 球種の変化方向の矢印（パワプロ表記・投手目線）。左投手は左右反転。
+ * @param {string} type
+ * @param {'右'|'左'} [throws]
+ */
+export function pitchDirection(type, throws = '右') {
+  const d = PITCH_DIRECTIONS[type] ?? '↑';
+  return throws === '左' ? MIRROR[d] ?? d : d;
+}
+
 /**
  * 投球の実際の到達位置を計算（aim + 変化 + 制球誤差）。中心 (0,0)、ゾーン内は |x|,|y|<=1.5
+ * 制球誤差 sigma = sigmaBase - sigmaK×k（k は コントロール×調子）＋疲労、特殊能力（四球・スロースターター・低め◎）で倍率。
  * @param {object} state
  * @param {{type:string, zone:{x:number,y:number}, offset?:{x:number,y:number}}} pitchInput offset=ボール球を狙う際の狙いのずらし（CPU用・任意）
  * @param {()=>number} [rng]
@@ -320,13 +506,17 @@ function fatigue(s, pitcher) {
  */
 export function pitchLocation(state, pitchInput, rng = Math.random) {
   const pitcher = getPitcher(state);
-  const pt = PITCH_TYPES[pitchInput.type] || PITCH_TYPES.fastball;
-  const flip = pitcher.throws === '左' ? -1 : 1;
-  const k = ((pitcher.pitching?.control ?? 50) - 50) / 49;
-  const sigma = TUNING.sigmaBase - TUNING.sigmaK * k + 0.12 * fatigue(state, pitcher);
+  const type = PITCH_TYPES[pitchInput.type] ? pitchInput.type : 'fastball';
+  const br = pitchBreak(pitcher, type);
+  const ctl = (pitcher.pitching?.control ?? 50) * condMult(state, pitcher.id);
+  const k = (ctl - 50) / 49;
+  let sigma = TUNING.sigmaBase - TUNING.sigmaK * k + 0.12 * fatigue(state, pitcher);
+  sigma *= fxNum(pitcher, '四球', 'sigma', 1, state);
+  if (state.inning <= 2) sigma *= fxNum(pitcher, 'スロースターター', 'sigma', 1, state);
+  if (pitchInput.zone.y >= 2) sigma *= fxNum(pitcher, '低め◎', 'sigmaLow', 1, state);
   const off = pitchInput.offset || { x: 0, y: 0 };
-  const x = pitchInput.zone.x - 1 + (off.x || 0) + pt.dx * flip + gauss(rng) * sigma;
-  const y = pitchInput.zone.y - 1 + (off.y || 0) + pt.dy + gauss(rng) * sigma;
+  const x = pitchInput.zone.x - 1 + (off.x || 0) + br.dx + gauss(rng) * sigma;
+  const y = pitchInput.zone.y - 1 + (off.y || 0) + br.dy + gauss(rng) * sigma;
   return { x, y, inZone: Math.abs(x) <= 1.5 && Math.abs(y) <= 1.5 };
 }
 
@@ -338,25 +528,97 @@ const cellOf = (v) => Math.round(v) + 1;
 /* ------------------------------------------------------------------ */
 
 /**
+ * ミートカーソルの大きさ（セル単位の楕円。中心 = batInput.pos）。
+ * rx = 0.35 + 0.50 × (ミート×調子 - 1)/98（ミート1 → 0.35、99 → 0.85）、天才打者 ×1.10
+ * mode: 'power' ×0.7、'bunt' ×1.1。ry = rx × 0.75、coreR（芯の円の半径）= rx × 0.3
+ * @param {object} batter
+ * @param {'meet'|'power'|'bunt'} [mode]
+ * @param {object} [state] 調子を反映する場合
+ * @returns {{rx:number, ry:number, coreR:number}}
+ */
+export function meetCursor(batter, mode = 'meet', state = null) {
+  const T = TUNING;
+  const c = (batter?.contact ?? 50) * (state ? condMult(state, batter?.id) : 1);
+  let rx = T.cursorMin + (T.cursorMax - T.cursorMin) * clamp((c - 1) / 98, 0, 1);
+  rx *= fxNum(batter, '天才打者', 'cursor', 1, state);
+  if (mode === 'power') rx *= T.cursorPower;
+  else if (mode === 'bunt') rx *= T.cursorBunt;
+  return { rx: r3(rx), ry: r3(rx * T.cursorRy), coreR: r3(rx * T.cursorCore) };
+}
+const r3 = (v) => Math.round(v * 1000) / 1000;
+
+/** 特殊能力の発動条件 */
+function fxActive(when, ctx, batter, pitcher, type) {
+  if (!when) return true;
+  const s = ctx.state;
+  switch (when) {
+    case 'vsLHP': return pitcher?.throws === '左';
+    case 'vsLHB': return batter?.bats === '左';
+    case 'fastball': return type === 'fastball';
+    case 'breaking': return !(PITCH_TYPES[type]?.fastballFamily);
+    case 'low': return !!ctx.loc && ctx.loc.y > 0.5;
+    default: break;
+  }
+  if (!s) return false;
+  switch (when) {
+    case 'risp': return !!(s.bases[1] || s.bases[2]);
+    case 'runners': return s.bases.some(Boolean);
+    case 'firstPitch': return s.balls === 0 && s.strikes === 0;
+    case 'twoStrikes': return s.strikes === 2;
+    case 'dpChance': return !!s.bases[0] && s.outs < 2;
+    case 'early': return s.inning <= 2;
+    default: return false;
+  }
+}
+
+/** 特殊能力による打席結果の重み倍率（OUTCOMES 順） */
+function skillMultipliers(batter, pitcher, type, ctx = {}) {
+  const m = OUTCOMES.map(() => 1);
+  for (const pl of [batter, pitcher]) {
+    for (const name of pl?.skills || []) {
+      const fx = SKILL_FX[name];
+      if (!fx || !skillOn(pl, name, ctx.state)) continue;
+      const def = SKILLS[name];
+      if (def && def.target !== 'any' && def.target !== (pl === pitcher ? 'pitcher' : 'batter')) continue;
+      if (!fxActive(fx.when, ctx, batter, pitcher, type)) continue;
+      for (const [k, idx] of Object.entries(FX_IDX)) {
+        if (fx[k] != null) for (const i of idx) m[i] *= fx[k];
+      }
+    }
+  }
+  return m;
+}
+
+/**
  * スイング結果の確率（正規化済み、OUTCOMES 順）
  * @param {object} batter
  * @param {object} pitcher
  * @param {string} type 球種
  * @param {'meet'|'power'} mode
- * @param {number} dist 0-2
+ * @param {number} dist 0-2（小数可: 隣り合う距離帯の係数表を線形補間）
  * @param {number} band 0-2
  * @param {boolean} inZone
  * @param {number} [fat] 疲労 0-1
+ * @param {{state?:object, loc?:{x:number,y:number}, batterCond?:number, pitcherCond?:number, skills?:boolean}} [ctx]
+ *   state があれば調子と状況依存の特殊能力（得点圏・カウント等）を反映。skills:false で特殊能力を無視。
  */
-export function swingProbabilities(batter, pitcher, type, mode, dist, band, inZone, fat = 0) {
+export function swingProbabilities(batter, pitcher, type, mode, dist, band, inZone, fat = 0, ctx = {}) {
   const T = TUNING;
-  const row = [...SWING_TABLE[mode === 'power' ? 'power' : 'meet'][dist][band]];
-  const c = (batter.contact - 50) / 49;
-  const p = (batter.power - 50) / 49;
+  const tbl = SWING_TABLE[mode === 'power' ? 'power' : 'meet'];
+  const dd = clamp(Number(dist) || 0, 0, 2);
+  const i0 = Math.floor(dd);
+  const i1 = Math.min(2, i0 + 1);
+  const fr = dd - i0;
+  const row = tbl[i0][band].map((w, i) => w * (1 - fr) + tbl[i1][band][i] * fr);
+  const st = ctx.state;
+  const bc = ctx.batterCond ?? (st ? condMult(st, batter.id) : 1);
+  const pc = ctx.pitcherCond ?? (st ? condMult(st, pitcher.id) : 1);
+  const c = (batter.contact * bc - 50) / 49;
+  const p = (batter.power * bc - 50) / 49;
   const kmh = (pitcher.pitching?.velocity ?? 135) - 4 * fat;
-  const v = (velocityAbility(kmh) - 50) / 49;
-  const lv = (pitcher.pitching?.pitches || []).find((q) => q.type === type)?.level ?? 2;
-  const read = (PITCH_TYPES[type] || PITCH_TYPES.fastball).read + (type === 'fastball' ? 0 : 0.04 * (lv - 2));
+  const v = (velocityAbility(kmh) * pc - 50) / 49;
+  const lv = pitchLevel(pitcher, type);
+  const read = (PITCH_TYPES[type] || PITCH_TYPES.fastball).read + (type === 'fastball' ? 0 : 0.025 * (lv - 3));
   const d = read - 0.30;
   const mult = [1,
     Math.exp(T.strikeC * c + T.strikeV * v + T.strikeD * d),
@@ -365,8 +627,9 @@ export function swingProbabilities(batter, pitcher, type, mode, dist, band, inZo
     Math.exp(T.doubleC * c + T.doubleP * p),
     Math.exp(T.tripleC * c + T.tripleP * p),
     Math.exp(T.hrC * c + T.hrP * p)];
+  const sk = ctx.skills === false ? null : skillMultipliers(batter, pitcher, type, ctx);
   for (let i = 0; i < row.length; i++) {
-    row[i] *= mult[i];
+    row[i] *= mult[i] * (sk ? sk[i] : 1);
     if (!inZone) row[i] *= i === 1 ? T.outZoneStrike : T.outZoneOther;
   }
   const t = sum(row);
@@ -865,11 +1128,11 @@ export function cpuManage(state, rng = Math.random) {
 /* ------------------------------------------------------------------ */
 
 /** 打席終了処理（打順を進め、半イニング終了・試合終了・CPU 采配を判定） */
-function endPlateAppearance(s, event, rng = Math.random) {
+function endPlateAppearance(s, event, rng = Math.random, advance = true) {
   const bat = battingSide(s);
   s.balls = 0;
   s.strikes = 0;
-  s.batterIndex[bat] = (s.batterIndex[bat] + 1) % s.teams[bat].lineup.length;
+  if (advance) s.batterIndex[bat] = (s.batterIndex[bat] + 1) % s.teams[bat].lineup.length;
   if (s.over) {
     event.text += ' サヨナラ！ 試合終了！';
     return;
@@ -926,11 +1189,178 @@ function pushLog(s, event) {
   const at = event.logAt ?? s.log.length;
   delete event.logAt;
   s.log.splice(at, 0, logCopy(event));
+  const st = event.steal;
+  if (st && (st.kind === 'steal' || st.kind === 'caught_stealing')) s.log.splice(at + 1, 0, { ...st });
+}
+
+/** 打者から見た引っ張り方向の符号（+1 = ライト方向、-1 = レフト方向） */
+function pullSign(batter, pitcher) {
+  if (batter.bats === '左') return 1;
+  if (batter.bats === '右') return -1;
+  return pitcher?.throws === '左' ? -1 : 1; // 両打ちは投手の逆の打席
 }
 
 /**
- * 1球の投球〜スイング判定。ボール・ストライク・ファウル・四球・三振はここで state に反映して完結。
- * 打球（groundout〜hr）の場合は outcome を返し、呼び出し側で打球を生成する。
+ * スイングの結果（打席結果・打球のヒント・接触情報）を決める。
+ * batInput.pos があればミートカーソル（連続座標）、なければ従来のゾーン距離で判定。
+ */
+function swingOutcome(s, batter, pitcher, type, loc, bat, fat, rng) {
+  const T = TUNING;
+  const mode = bat.mode === 'power' ? 'power' : bat.mode === 'bunt' ? 'bunt' : 'meet';
+  const timing = clamp(Number(bat.timing) || 0, -1, 1);
+  const t = Math.abs(timing);
+  const band = t < 0.3 ? 0 : t < 0.6 ? 1 : 2;
+  const ctx = { state: s, loc };
+  const info = { mode, band };
+  const usePos = bat.pos && Number.isFinite(bat.pos.x) && Number.isFinite(bat.pos.y);
+  let nd; let lift = 0; let hx = 0; let tier = 'other'; let d = 0;
+  if (usePos) {
+    const cur = meetCursor(batter, mode, s);
+    const dx = loc.x - bat.pos.x;
+    const dy = loc.y - bat.pos.y;
+    nd = Math.hypot(dx / cur.rx, dy / cur.ry);
+    const e = Math.hypot(dx, dy);
+    tier = e <= cur.coreR * 0.5 ? 'shin2' : e <= cur.coreR ? 'shin' : 'other';
+    // ボールがカーソル中心より上（画面 y が小さい）→ バットがボールの下側に当たりフライ、下 → ゴロ
+    lift = clamp(-dy / cur.ry, -1, 1);
+    hx = clamp(dx / cur.rx, -1, 1);
+    info.cursor = { rx: cur.rx, ry: cur.ry, coreR: cur.coreR };
+    info.nd = r2(nd);
+  } else {
+    const zone = bat.zone || { x: 1, y: 1 };
+    d = Math.min(2, Math.max(Math.abs(zone.x - cellOf(loc.x)), Math.abs(zone.y - cellOf(loc.y))));
+    nd = [0.25, 0.75, 1.08][d];
+    tier = d === 0 ? 'shin' : 'other';
+  }
+  info.contactTier = tier;
+  // 弾道・パワーヒッターで打球角度が上がる
+  lift += ((batter.trajectory ?? 2) - 2) * T.trajLift + fxNum(batter, 'パワーヒッター', 'lift', 0, s);
+  // 方向: タイミングが早い → 引っ張り、遅い → 流し。カーソル横ずれも反映。流し打ちは逆方向へ
+  const ps = pullSign(batter, pitcher);
+  let dirShift = ps * -timing * T.timingDir + hx * T.hxDir;
+  if (skillOn(batter, '流し打ち', s) && timing > 0) dirShift -= ps * SKILL_FX['流し打ち'].oppo;
+  const hint = { lift, dirShift, noPull: skillOn(batter, '広角打法', s) };
+
+  if (mode === 'bunt') {
+    info.dist = r2(nd);
+    if (nd > 1) {
+      const out = nd <= 1 + T.cursorRim && rng() < T.buntRimFoul ? 'foul' : 'strike';
+      return { outcome: out, hint, info: { ...info, contactTier: 'other' } };
+    }
+    const c = (batter.contact * condMult(s, batter.id) - 50) / 49;
+    const pFoul = clamp(T.buntFoul + T.buntFoulNd * nd - T.buntFoulC * c + fxNum(batter, 'バント◎', 'buntFoul', 0, s)
+      + (band === 2 ? 0.12 : band === 1 ? 0.04 : 0) + (loc.inZone ? 0 : 0.10), 0.03, 0.9);
+    const pPop = clamp(T.buntPop + T.buntPopNd * nd + fxNum(batter, 'バント◎', 'buntPop', 0, s), 0.01, 0.5);
+    const r = rng();
+    const out = r < pFoul ? 'foul' : r < pFoul + pPop ? 'bunt_pop' : 'bunt';
+    hint.quality = 1 - nd;
+    return { outcome: out, hint, info };
+  }
+  if (usePos) {
+    if (nd > 1) {
+      const out = nd <= 1 + T.cursorRim && rng() < T.rimFoul ? 'foul' : 'strike';
+      info.dist = 2;
+      return { outcome: out, hint, info };
+    }
+    d = tier === 'shin2' ? 0 : T.cursorDist * clamp((nd - T.cursorCoreN) / (1 - T.cursorCoreN), 0, 1);
+  }
+  info.dist = usePos ? r2(d) : d;
+  const probs = swingProbabilities(batter, pitcher, type, mode, d, band, loc.inZone, fat, ctx);
+  if (usePos) {
+    // 上下のずれでゴロ/フライの比率
+    probs[3] *= Math.exp(-T.vyK * lift);
+    probs[4] *= Math.exp(T.vyK * lift);
+    if (tier === 'shin2') { for (const i of [5, 6, 7, 8]) probs[i] *= 1.12; probs[1] *= 0.85; }
+  }
+  // 早めのタイミングで内角を引っ張る → 強い打球
+  const inside = ps === 1 ? loc.x > 0.3 : loc.x < -0.3;
+  if (timing < -0.1 && timing > -0.6 && inside) { probs[6] *= 1.1; probs[8] *= 1.1; }
+  const tot = sum(probs);
+  const outcome = OUTCOMES[pickWeighted(probs.map((x) => x / tot), rng)];
+  return { outcome, hint, info };
+}
+
+/** 現在の守備側の捕手 */
+function catcherOf(s) {
+  const def = fieldingSide(s);
+  const team = s.teams[def];
+  const id = team.lineup.find((x) => s.positions[def][x] === '捕');
+  return id ? findPlayer(team, id) : null;
+}
+
+/**
+ * 盗塁の走者と送球の到達時刻（秒、投手の始動 = 0）。
+ * 走者: スタート 0.30 秒（盗塁◎ -0.12）＋ (27.4m − リード) / (7.0 + 1.6×走力/99 m/s)（走塁◎ 走力+10）＋スライディング 0.10
+ *       リード 一塁 3.6m / 二塁 5.5m（投手が牽制◎なら -0.8m）
+ * 守備: 投球 1.35 秒（クイック◎ -0.15、変化球 +0.10）＋ 捕手の握り替え 0.80 − 0.25×捕球/99（送球◎ -0.08、キャッチャー◎ -0.06）
+ *       ＋ 距離 / (24 + 12×肩/99 m/s、送球◎ +3) ＋ タッチ 0.15（ワンバウンド・大きく外れた球 +0.25）
+ * どちらにも σ0.08 秒の誤差。走者が早ければセーフ。
+ */
+function stealTimes(s, runner, catcher, pitcher, baseIndex, type, loc, rng) {
+  const T = TUNING;
+  const spd = Math.min(99, (runner?.speed ?? 50) + fxNum(runner, '走塁◎', 'runSpeed', 0, s)) / 99;
+  const lead = (baseIndex === 0 ? T.stealLead1 : T.stealLead2) - fxNum(pitcher, '牽制◎', 'lead', 0, s);
+  const v = T.runBase + T.runSpeed * spd;
+  const runnerTime = T.stealJump - fxNum(runner, '盗塁◎', 'stealJump', 0, s) + (27.4 - lead) / v + T.stealSlide
+    + (rng ? gauss(rng) * T.stealNoise : 0);
+  const delivery = T.stealDelivery - fxNum(pitcher, 'クイック◎', 'delivery', 0, s)
+    + (PITCH_TYPES[type]?.fastballFamily ? 0 : T.stealBreaking);
+  const cArm = catcher?.arm ?? 50;
+  const pop = T.stealPop - T.stealPopC * ((catcher?.catching ?? 50) / 99)
+    - fxNum(catcher, '送球◎', 'transfer', 0, s) - fxNum(catcher, 'キャッチャー◎', 'pop', 0, s);
+  const tv = T.throwV0 + (T.throwVArm * cArm) / 99 + fxNum(catcher, '送球◎', 'throwV', 0, s);
+  const target = FIELD.bases[baseIndex + 2];
+  const dthrow = dist({ x: 0, y: -1 }, target);
+  const wild = loc && (Math.abs(loc.x) > 1.9 || loc.y > 1.9) ? T.stealWild : 0;
+  const throwTime = delivery + pop + dthrow / tv + T.stealTag + wild + (rng ? gauss(rng) * T.stealNoise : 0);
+  return { runnerTime, throwTime };
+}
+
+/**
+ * 盗塁の成功確率の目安（UI 表示・CPU 判断用。乱数なしの時間差から近似）
+ * @param {object} state
+ * @param {0|1} baseIndex
+ * @returns {number} 0-1
+ */
+export function stealChance(state, baseIndex) {
+  const runner = anyPlayer(state, state.bases[baseIndex]);
+  if (!runner) return 0;
+  const { runnerTime, throwTime } = stealTimes(state, runner, catcherOf(state), getPitcher(state), baseIndex, 'fastball', null, null);
+  const z = (throwTime - runnerTime) / (TUNING.stealNoise * Math.SQRT2);
+  return 1 / (1 + Math.exp(-1.7 * z));
+}
+
+/** 盗塁の判定を state（clone 済み）に反映し、steal イベントを返す */
+function runSteal(s, steal, pitcher, type, loc, rng) {
+  const bi = steal.baseIndex;
+  const runnerId = s.bases[bi];
+  if (!runnerId || s.bases[bi + 1]) return { kind: 'steal_cancelled', reason: 'blocked', runnerId: runnerId ?? null, text: '' };
+  const bat = battingSide(s);
+  const runner = findPlayer(s.teams[bat], runnerId) || anyPlayer(s, runnerId);
+  const catcher = catcherOf(s);
+  const { runnerTime, throwTime } = stealTimes(s, runner, catcher, pitcher, bi, type, loc, rng);
+  const safe = runnerTime < throwTime;
+  const to = BASE_NAMES[bi + 2];
+  const ev = {
+    kind: safe ? 'steal' : 'caught_stealing', side: bat, runnerId, catcherId: catcher?.id ?? null,
+    from: bi + 1, to: bi + 2, safe, runnerTime: r2(runnerTime), throwTime: r2(throwTime), runs: 0, text: '',
+  };
+  s.bases[bi] = null;
+  if (safe) {
+    s.bases[bi + 1] = runnerId;
+    s.stats[runnerId] && (s.stats[runnerId].sb += 1);
+    ev.text = `${fam(runner)}、${to}へ盗塁成功！`;
+  } else {
+    s.stats[runnerId] && (s.stats[runnerId].cs += 1);
+    addOut(s);
+    ev.text = `${fam(runner)}が${to}へスタート…${catcher ? `${fam(catcher)}の送球、` : ''}刺した！ 盗塁失敗。`;
+  }
+  return ev;
+}
+
+/**
+ * 1球の投球〜スイング判定。ボール・ストライク・ファウル・四球・三振（と盗塁）はここで state に反映して完結。
+ * 打球（groundout〜hr、バント）の場合は outcome を返し、呼び出し側で打球を生成する。
  */
 function pitchCore(s, pitchInput, batInput, rng) {
   const def = fieldingSide(s);
@@ -940,9 +1370,12 @@ function pitchCore(s, pitchInput, batInput, rng) {
   const loc0 = pitchInput.loc ?? pitchLocation(s, { ...pitchInput, type }, rng);
   const loc = { x: loc0.x, y: loc0.y, inZone: Math.abs(loc0.x) <= 1.5 && Math.abs(loc0.y) <= 1.5 };
   const fat = fatigue(s, pitcher);
+  const steal = s.pendingSteal && s.pendingSteal.side === battingSide(s) ? s.pendingSteal : null;
+  s.pendingSteal = null;
+  s.stealChecked = false;
 
   // スタミナ・投球数
-  s.stamina[pitcher.id] = Math.max(0, (s.stamina[pitcher.id] ?? 0) - (type === 'fastball' ? 0.5 : 1));
+  s.stamina[pitcher.id] = Math.max(0, (s.stamina[pitcher.id] ?? 0) - (PITCH_TYPES[type].fastballFamily ? 0.5 : 1));
   s.pitchCount[def] += 1;
   if (s.provisional?.[def] === pitcher.id) s.provisional[def] = null;
 
@@ -953,26 +1386,39 @@ function pitchCore(s, pitchInput, batInput, rng) {
     kind: 'ball', text: '', runs: 0, pitch: { type, zone: pitchInput.zone, loc },
     batter: batter.id, pitcher: pitcher.id, swing: !!batInput, outcome: null,
   };
+  if (type === 'fastball' && skillOn(pitcher, 'ノビ◎', s)) event.pitch.nobi = true;
 
   let outcome;
+  let hint = null;
   if (!batInput) {
     outcome = loc.inZone ? 'strike' : 'ball';
   } else {
-    const d = Math.min(2, Math.max(Math.abs(batInput.zone.x - cellOf(loc.x)), Math.abs(batInput.zone.y - cellOf(loc.y))));
-    const t = Math.abs(clamp(batInput.timing ?? 0, -1, 1));
-    const band = t < 0.3 ? 0 : t < 0.6 ? 1 : 2;
-    const probs = swingProbabilities(batter, pitcher, type, batInput.mode, d, band, loc.inZone, fat);
-    outcome = OUTCOMES[pickWeighted(probs, rng)];
-    event.dist = d;
-    event.band = band;
-    event.mode = batInput.mode;
+    const r = swingOutcome(s, batter, pitcher, type, loc, batInput, fat, rng);
+    outcome = r.outcome;
+    hint = r.hint;
+    event.dist = r.info.dist;
+    event.band = r.info.band;
+    event.mode = r.info.mode;
+    event.contactTier = r.info.contactTier;
+    if (r.info.cursor) { event.cursor = r.info.cursor; event.nd = r.info.nd; }
+    if (r.info.mode === 'bunt') event.bunt = true;
   }
   event.outcome = outcome;
+  const cancel = (reason) => {
+    if (steal) event.steal = { kind: 'steal_cancelled', reason, runnerId: s.bases[steal.baseIndex] ?? steal.runnerId, text: '' };
+  };
+  const doSteal = () => {
+    const ev = runSteal(s, steal, pitcher, type, loc, rng);
+    event.steal = ev;
+    if (ev.text) event.text += ` ${ev.text}`;
+    return ev;
+  };
   let done = true;
   switch (outcome) {
     case 'ball': {
       s.balls += 1;
       if (s.balls >= 4) {
+        cancel('walk');
         event.kind = 'walk';
         bs.bb += 1;
         const runs = forceAdvance(s.bases, batter.id);
@@ -984,6 +1430,10 @@ function pitchCore(s, pitchInput, batInput, rng) {
       } else {
         event.kind = 'ball';
         event.text = `${pname}、外れてボール。（${s.balls}-${s.strikes}）`;
+        if (steal) {
+          const ev = doSteal();
+          if (ev.kind === 'caught_stealing' && s.outs >= 3) { event.logAt = s.log.length; endPlateAppearance(s, event, rng, false); }
+        }
       }
       break;
     }
@@ -994,23 +1444,48 @@ function pitchCore(s, pitchInput, batInput, rng) {
         bs.ab += 1; bs.so += 1; ps.k += 1;
         addOut(s);
         event.logAt = s.log.length;
-        event.text = batInput ? `空振り三振！ ${pname}に${batter.name}のバットが空を切る！` : `見逃し三振！ ${pname}がズバッと決まり${batter.name}は手が出ない！`;
+        event.text = batInput ? (batInput.mode === 'bunt' ? `バント空振り、三振！` : `空振り三振！ ${pname}に${batter.name}のバットが空を切る！`)
+          : `見逃し三振！ ${pname}がズバッと決まり${batter.name}は手が出ない！`;
+        if (steal) { if (s.outs < 3) doSteal(); else cancel('inning_over'); }
         endPlateAppearance(s, event, rng);
       } else {
         event.kind = 'strike';
         event.text = batInput ? `空振り！ ${pname}。（${s.balls}-${s.strikes}）` : `${pname}、見逃しストライク。（${s.balls}-${s.strikes}）`;
+        if (steal) {
+          const ev = doSteal();
+          if (ev.kind === 'caught_stealing' && s.outs >= 3) { event.logAt = s.log.length; endPlateAppearance(s, event, rng, false); }
+        }
       }
       break;
     }
     case 'foul': {
+      cancel('foul');
+      if (event.bunt && s.strikes >= 2) {
+        // スリーバント失敗（2ストライク後のバントファウルは三振）
+        event.kind = 'strikeout';
+        event.buntFoulOut = true;
+        bs.ab += 1; bs.so += 1; ps.k += 1;
+        addOut(s);
+        event.logAt = s.log.length;
+        event.text = `バントはファウル…スリーバント失敗！ ${batter.name}、三振。`;
+        endPlateAppearance(s, event, rng);
+        break;
+      }
       if (s.strikes < 2) s.strikes += 1;
       event.kind = 'foul';
-      event.text = `ファウル。（${s.balls}-${s.strikes}）`;
+      event.text = `${event.bunt ? 'バントは' : ''}ファウル。（${s.balls}-${s.strikes}）`;
+      if (steal) event.text += ' ランナーは戻ります。';
       break;
     }
-    default: done = false;
+    default:
+      done = false;
+      if (steal && s.bases[steal.baseIndex]) {
+        event.steal = { kind: 'running', runnerId: s.bases[steal.baseIndex], from: steal.baseIndex + 1, text: '' };
+      }
   }
-  return { event, outcome, batter, pitcher, done };
+  if (outcome === 'bunt') event.outcome = 'groundout';
+  if (outcome === 'bunt_pop') event.outcome = 'flyout';
+  return { event, outcome, batter, pitcher, done, hint, running: event.steal?.kind === 'running' ? [event.steal.runnerId] : [] };
 }
 
 /** ホームランを state に反映 */
@@ -1039,31 +1514,106 @@ function applyHomeRun(s, ball, event, batter) {
  *   続けて autoField（CPU 守備）またはユーザー守備の結果で resolveBattedBall を呼ぶこと。
  * @param {object} state
  * @param {{type:string, zone:{x:number,y:number}, loc?:{x:number,y:number}}} pitchInput
- * @param {null|{zone:{x:number,y:number}, mode:'meet'|'power', timing:number}} batInput
+ * @param {null|{zone?:{x:number,y:number}, pos?:{x:number,y:number}, mode:'meet'|'power'|'bunt', timing:number}} batInput
+ *   pos（セル単位の連続座標）があればミートカーソルで判定、なければ zone で判定（docs/ENGINE-API.md 7.4）
  * @param {()=>number} [rng]
- * @returns {{state:object, event:object, ball:null|object}}
+ * @returns {{state:object, event:object, ball:null|object, steal:null|object}}
  */
 export function pitchContact(state, pitchInput, batInput, rng = Math.random) {
   const s = cloneState(state);
-  if (s.over) return { state: s, event: { kind: 'none', text: '試合は終了しています', runs: 0 }, ball: null };
+  if (s.over) return { state: s, event: { kind: 'none', text: '試合は終了しています', runs: 0 }, ball: null, steal: null };
   if (s.pending) throw new Error('前の打球の処理（resolveBattedBall）が終わっていません');
-  const { event, outcome, batter, done } = pitchCore(s, pitchInput, batInput, rng);
+  // CPU（攻撃側がユーザーでない）の盗塁判断
+  if (!s.pendingSteal && !s.stealChecked && battingSide(s) !== s.userSide && !pitchInput?.noSteal) cpuStealMut(s, rng);
+  const { event, outcome, batter, done, hint, running } = pitchCore(s, pitchInput, batInput, rng);
+  const steal = event.steal && (event.steal.kind === 'steal' || event.steal.kind === 'caught_stealing') ? event.steal : null;
   if (done) {
     pushLog(s, event);
-    return { state: s, event, ball: null };
+    return { state: s, event, ball: null, steal };
   }
-  const ball = generateBall(s, outcome, batter, rng);
+  const ball = generateBall(s, outcome, batter, rng, hint, running);
   if (ball.isHomeRun) {
     event.ball = ball;
     applyHomeRun(s, ball, event, batter);
     event.logAt = s.log.length;
     endPlateAppearance(s, event, rng);
     pushLog(s, event);
-    return { state: s, event, ball };
+    return { state: s, event, ball, steal: null };
   }
   const base = { ...event };
   s.pending = { ballId: ball.id, ball, batterId: batter.id, pitcherId: event.pitcher, event: base };
-  return { state: s, event: { ...event, kind: 'inplay', text: '打った！', ball }, ball };
+  return { state: s, event: { ...event, kind: 'inplay', text: event.bunt ? 'バント！' : '打った！', ball }, ball, steal: null };
+}
+
+/**
+ * 盗塁を予約する（次の投球で走る）。次の pitchContact / resolvePitch で解決される。
+ * @param {object} state
+ * @param {'away'|'home'} side 攻撃中のチーム
+ * @param {0|1} baseIndex 0 = 一塁走者が二塁へ、1 = 二塁走者が三塁へ
+ * @returns {object} 新しい state（state.pendingSteal = { side, baseIndex, runnerId }）
+ */
+export function attemptSteal(state, side, baseIndex) {
+  const s = cloneState(state);
+  if (s.over) throw new Error('試合は終了しています');
+  if (s.pending) throw new Error('打球の処理中は盗塁できません');
+  if (battingSide(s) !== side) throw new Error('盗塁は攻撃中のチームしかできません');
+  if (baseIndex !== 0 && baseIndex !== 1) throw new Error('盗塁できるのは一塁・二塁ランナーです');
+  const runnerId = s.bases[baseIndex];
+  if (!runnerId) throw new Error(`${BASE_NAMES[baseIndex + 1]}にランナーがいません`);
+  if (s.bases[baseIndex + 1]) throw new Error(`${BASE_NAMES[baseIndex + 2]}が空いていません`);
+  s.pendingSteal = { side, baseIndex, runnerId };
+  return s;
+}
+
+/**
+ * 盗塁の予約を取り消す
+ * @param {object} state
+ * @returns {object} 新しい state
+ */
+export function cancelSteal(state) {
+  const s = cloneState(state);
+  s.pendingSteal = null;
+  return s;
+}
+
+/** CPU の盗塁判断（state を変更）。走る場合は pendingSteal を設定して true */
+function cpuStealMut(s, rng) {
+  const T = TUNING;
+  s.stealChecked = true;
+  if (s.over || s.pending || s.pendingSteal || s.outs >= 3) return false;
+  if (s.strikes >= 2 || s.balls >= 3) return false;
+  const side = battingSide(s);
+  if (total(s, other(side)) - total(s, side) > T.cpuStealDeficit) return false;
+  for (const bi of [1, 0]) {
+    const id = s.bases[bi];
+    if (!id || s.bases[bi + 1]) continue;
+    if (bi === 0 && s.bases[1]) continue;
+    if (bi === 1 && s.outs >= 2) continue;
+    const r = findPlayer(s.teams[side], id) || anyPlayer(s, id);
+    const eff = (r?.speed ?? 0) + fxNum(r, '盗塁◎', 'cpuSteal', 0, s);
+    const need = T.cpuStealSpeed + (bi === 1 ? 10 : 0);
+    if (eff < need) continue;
+    if (stealChance(s, bi) < T.cpuStealMin) continue;
+    if (rng() < T.cpuStealRate * (eff - 70) / 30) {
+      s.pendingSteal = { side, baseIndex: bi, runnerId: id, cpu: true };
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * CPU の盗塁判断だけを先に行う（UI で投球前に走者のスタートを見せたい場合）。
+ * 返した state で pitchContact を呼べば、同じ投球で再判断はしない。
+ * @param {object} state
+ * @param {()=>number} [rng]
+ * @returns {{state:object, attempted:boolean}}
+ */
+export function cpuSteal(state, rng = Math.random) {
+  const s = cloneState(state);
+  if (battingSide(s) === s.userSide) return { state: s, attempted: false };
+  const attempted = cpuStealMut(s, rng);
+  return { state: s, attempted };
 }
 
 /**
@@ -1160,10 +1710,13 @@ function buildPath(ball, D, T) {
 }
 
 /** 打席結果（intendedOutcome）に合いそうな打球の候補を1つ作る */
-function candidateBall(s, intended, batter, rng, id) {
-  const pull = batter.bats === '左' ? 1 : batter.bats === '右' ? -1 : 0;
-  let dir = clamp(uni(rng, -44, 44) * 0.75 + gauss(rng) * 9 + pull * 7, -44, 44);
-  const r = rng();
+function candidateBall(s, intended, batter, rng, id, hint = null) {
+  const pull = hint?.noPull ? 0 : batter.bats === '左' ? 1 : batter.bats === '右' ? -1 : 0;
+  let dir = clamp(uni(rng, -44, 44) * 0.75 + gauss(rng) * 9 + pull * 7 + (hint?.dirShift ?? 0), -44, 44);
+  let r = rng();
+  // 打球角度（カーソルの上下・弾道）: ゴロ/ライナー/フライの選び方をずらす
+  if (hint && (intended === 'single' || intended === 'groundout')) r = clamp(r + hint.lift * 0.25, 0, 0.999);
+  if (hint && intended === 'flyout' && hint.lift > 0.4 && r < 0.62 && rng() < (hint.lift - 0.4)) r = 0.7;
   let type; let D = 0; let T = 0; let exit = 0;
   switch (intended) {
     case 'groundout':
@@ -1201,6 +1754,34 @@ function candidateBall(s, intended, batter, rng, id) {
   return buildPath(ball, D, T);
 }
 
+/**
+ * バントの打球（本塁付近のゴロ、またはバントの小フライ）。
+ * ゴロ: 方向 ±30°、打球速度 32〜60 km/h（バント◎ 28〜45 km/h で両ラインへ転がしやすい。質が低いと強く・正面へ）
+ */
+function buntBall(s, batter, pop, rng, id, hint) {
+  const good = skillOn(batter, 'バント◎', s);
+  const q = clamp(hint?.quality ?? 0.5, 0, 1);
+  let type; let dir; let exit = 0; let D = 0; let T = 0;
+  if (pop) {
+    type = 'popup';
+    dir = clamp(gauss(rng) * 15, -30, 30);
+    D = uni(rng, 4, 14);
+    T = uni(rng, 1.6, 2.4);
+  } else {
+    type = 'grounder';
+    const side = rng() < 0.5 ? -1 : 1;
+    const spread = (good ? 12 : 4) + 14 * q;
+    dir = clamp(side * uni(rng, spread * 0.4, spread + 4) + gauss(rng) * 4, -30, 30);
+    exit = good ? uni(rng, 28, 45) : uni(rng, 32, 46) + (1 - q) * 14;
+  }
+  const ball = {
+    id, type, dirDeg: r2(dir), exitSpeed: Math.round(exit), landing: null, path: [], hangTime: 0,
+    isFoul: false, isHomeRun: false, batterId: batter.id, intendedOutcome: pop ? 'flyout' : 'groundout',
+    runAggro: 0, bunt: true,
+  };
+  return buildPath(ball, D, T);
+}
+
 /** プレー結果が打席判定（intendedOutcome）と合っているか */
 function matchesIntended(intended, play) {
   switch (intended) {
@@ -1217,13 +1798,19 @@ function matchesIntended(intended, play) {
  * 打球を生成。CPU 守備（エラー・送球誤差なし）で処理したときに打席判定の結果になる軌跡を探す
  * （棄却サンプリング）。ユーザーが守備で上回れば結果は変わりうる。
  */
-function generateBall(s, intended, batter, rng) {
+function generateBall(s, intended, batter, rng, hint = null, running = []) {
   s.ballSeq = (s.ballSeq || 0) + 1;
   const id = `ball-${s.ballSeq}`;
+  if (intended === 'bunt' || intended === 'bunt_pop') {
+    const ball = buntBall(s, batter, intended === 'bunt_pop', rng, id, hint);
+    if (running.length) ball.running = [...running];
+    return ball;
+  }
   const want = { single: 1, double: 2, triple: 3 }[intended] ?? 0;
   let best = null; let bestScore = -Infinity;
   for (let i = 0; i < TUNING.ballTries; i++) {
-    const ball = candidateBall(s, intended, batter, rng, id);
+    const ball = candidateBall(s, intended, batter, rng, id, hint);
+    if (running.length) ball.running = [...running];
     if (ball.isHomeRun) return ball;
     const f = autoFieldCore(s, ball, null);
     const play = computePlay(s, ball, f, null);
@@ -1280,6 +1867,7 @@ export function fielderParams(player, pos) {
     reachAir: T.reachAir + T.reachF * fld,
     catchHeight: T.catchHeight,
     arm: player.arm, fld, eligible,
+    throwBonus: fxNum(player, '送球◎', 'throwV', 0), transferBonus: fxNum(player, '送球◎', 'transfer', 0),
   };
 }
 
@@ -1303,8 +1891,8 @@ function throwSeconds(F, from, base) {
   const to = FIELD.bases[base];
   const d = dist(from, to);
   if (d < 4) return d / F.runSpeed + 0.1; // 自分でベースを踏む
-  const v = T.throwV0 + (T.throwVArm * F.arm) / 99;
-  const tr = (hyp(from) < 45 ? T.transferIF : T.transferOF) - 0.15 * F.fld;
+  const v = T.throwV0 + (T.throwVArm * F.arm) / 99 + (F.throwBonus || 0);
+  const tr = (hyp(from) < 45 ? T.transferIF : T.transferOF) - 0.15 * F.fld - (F.transferBonus || 0);
   return tr + d / v + (d > T.longFrom ? (d - T.longFrom) * T.longThrow : 0);
 }
 
@@ -1381,7 +1969,8 @@ function autoFieldCore(s, ball, rng) {
   const ic = intercept(ball, fielders);
   let error = false;
   if (rng) {
-    const p = TUNING.errBase * (1.4 - ic.F.player.catching / 99) * (ic.caught ? 0.6 : 1) * (ic.F.eligible ? 1 : 2);
+    const p = TUNING.errBase * (1.4 - ic.F.player.catching / 99) * (ic.caught ? 0.6 : 1) * (ic.F.eligible ? 1 : 2)
+      * fxNum(ic.F.player, 'エラー', 'error', 1);
     error = rng() < p;
   }
   const f = {
@@ -1467,13 +2056,16 @@ function planRunners(s, ball, f) {
     runners.push({ id: b[i], player: p, from: i + 1, forced: i === 0 ? true : forcedAt[i], isBatter: false });
   }
   runners.push({ id: batter.id, player: batter, from: 0, forced: true, isBatter: true });
-  const margin = (outs0 === 2 ? T.runMargin2 : T.runMargin) - (ball.runAggro || 0);
+  const margin0 = (outs0 === 2 ? T.runMargin2 : T.runMargin) - (ball.runAggro || 0);
+  const running = ball.running || [];
   // 走者のスタートと各塁到達時刻
   for (const r of runners) {
-    const spd = (r.player?.speed ?? 50) / 99;
+    const spd = Math.min(99, (r.player?.speed ?? 50) + fxNum(r.player, '走塁◎', 'runSpeed', 0, s)) / 99;
+    r.margin = margin0 - fxNum(r.player, '走塁◎', 'margin', 0, s);
     let start;
     let lead = T.runLead;
     if (r.isBatter) start = 0;
+    else if (running.includes(r.id) && !caught) { start = 0; lead = T.runLead + T.runningLead; }
     else if (caught) { start = fieldTime; lead = 0; }
     else if (infieldPlay) start = 0;
     else if (ball.type === 'grounder') start = r.forced || outs0 === 2 ? 0 : 0.3;
@@ -1485,7 +2077,8 @@ function planRunners(s, ball, f) {
     let t = start;
     for (let k = r.from + 1; k <= 4; k++) {
       if (r.isBatter) {
-        t += k === 1 ? T.bat1BSlow - (T.bat1BSlow - T.bat1BFast) * ((r.player.speed - 1) / 98)
+        t += k === 1 ? T.bat1BSlow - (T.bat1BSlow - T.bat1BFast) * ((Math.min(99, spd * 99) - 1) / 98)
+            + fxNum(r.player, '併殺', 'to1B', 0, s)
           : 27.4 / (T.batLegBase + T.batLegSpeed * spd) + T.rounding;
       } else {
         const v = T.runBase + T.runSpeed * spd;
@@ -1505,7 +2098,12 @@ function planRunners(s, ball, f) {
       if (!r.isBatter && r.from + 1 <= cap && outs0 + 1 < 3
         && r.arr[r.from + 1] + T.tagMargin - (ball.runAggro || 0) < ballEst(r.from + 1) + T.tagTime) target = r.from + 1;
     } else if (infieldPlay) {
-      if (!r.forced) {
+      if (!r.forced && ball.bunt) {
+        // 送りバント: 二塁走者は三塁へ（三塁走者は自重）
+        target = r.from === 2 && r.from + 1 <= cap ? 3 : r.from;
+      } else if (!r.forced && running.includes(r.id) && r.from + 1 <= cap && r.from + 1 < 4) {
+        target = r.from + 1; // スタートを切っていた走者
+      } else if (!r.forced) {
         target = r.from;
         const rightSide = r.from === 2 && f.fieldedAt.x > 3;
         if ((outs0 === 2 || rightSide) && r.from + 1 <= cap && r.from + 1 < 4) target = r.from + 1;
@@ -1513,7 +2111,7 @@ function planRunners(s, ball, f) {
       }
     } else {
       while (target < 4 && target + 1 <= cap
-        && r.arr[target + 1] + margin < ballEst(target + 1) + T.tagTime) target += 1;
+        && r.arr[target + 1] + r.margin < ballEst(target + 1) + T.tagTime) target += 1;
     }
     target = Math.min(target, cap);
     if (!caught) target = Math.max(target, Math.min(r.minBase, cap));
@@ -1601,7 +2199,7 @@ function computePlay(s, ball, f, rng) {
         // 併殺（フォースアウト後に一塁へ転送）
         if (force && tgt !== 1 && infieldPlay && !victim.isBatter && batter.target === 1 && outs0 + outs.length < 3) {
           const C = coverFielder(s, tgt, F, f.fieldedAt);
-          const v = T.throwV0 + (T.throwVArm * C.arm) / 99;
+          const v = T.throwV0 + (T.throwVArm * C.arm) / 99 + (C.throwBonus || 0);
           const relayArr = arrive + (T.pivot - 0.25 * C.fld) + dist(FIELD.bases[tgt], FIELD.bases[1]) / v
             + (rng ? gauss(rng) * T.throwNoise * 0.5 : 0);
           relay = { fielderId: C.id, arrive: relayArr, out: false };
@@ -1637,7 +2235,10 @@ function computePlay(s, ball, f, rng) {
   if (f.error) kind = 'error';
   else if (caught) kind = runnerOuts.length ? 'double_play' : runs > 0 ? 'sac_fly' : 'out';
   else if (batter.out) {
-    if (batter.target <= 1) kind = runnerOuts.length ? 'double_play' : 'out';
+    if (batter.target <= 1) {
+      kind = runnerOuts.length ? 'double_play' : 'out';
+      if (ball.bunt && !runnerOuts.length && outs0 < 2 && runners.some((r) => !r.isBatter && r.target > r.from)) kind = 'sac_bunt';
+    }
     else { kind = 'hit'; bases = batter.target - 1; }
   } else if (infieldPlay && runnerOuts.length) kind = 'out'; // 先行走者アウト・打者は一塁へ（日本の記録では凡打）
   else if (infieldPlay && tgt && tgt !== 1) kind = 'fielders_choice'; // 先行走者を狙ってオールセーフ＝野選
@@ -1706,6 +2307,14 @@ function playText(s, ball, f, play, batter) {
       parts.push(`${runnerLabel(tag)}タッチアップ！ ${dest}へ…${tag.out ? 'タッチアウト！ ダブルプレー！' : 'セーフ！'}`);
       if (play.kind === 'sac_fly') parts.push('犠牲フライ！');
     }
+  } else if (play.infieldPlay && ball.bunt) {
+    const head = `${B}、バント！ ${pos}が処理して`;
+    if (play.kind === 'sac_bunt') parts.push(`${head}一塁へ…アウト！ 送りバント成功！`);
+    else if (!play.tgt) parts.push(`${B}、絶妙なバント！ 投げられない！ バントヒット！`);
+    else if (play.tgt === 1) parts.push(`${head}一塁へ…${play.batterOut ? 'アウト！' : 'セーフ！ バントヒット！'}`);
+    else if (play.victim?.out) parts.push(`${head}${BASE_NAMES[play.tgt]}へ…アウト！ 送りバント失敗！`);
+    else parts.push(`${head}${BASE_NAMES[play.tgt]}へ…セーフ！ フィルダースチョイス！`);
+    runnerNotes(true);
   } else if (play.infieldPlay) {
     const head = `${B}、${pos}ゴロ！`;
     if (!play.tgt) {
@@ -1773,7 +2382,8 @@ export function resolveBattedBall(state, ball, fielding, rng = Math.random) {
       : play.kind === 'hr' ? 'hr' : ball.type === 'grounder' && !play.caught ? 'groundout' : 'flyout',
     intendedOutcome: ball.intendedOutcome, ballId: ball.id, ball, fielding: f,
     fielderId: play.F.id, fielderPos: play.F.pos, outsMade: Math.min(play.outs.length, 3 - s.outs),
-    doublePlay: play.kind === 'double_play', sacFly: play.kind === 'sac_fly', error: play.error,
+    doublePlay: play.kind === 'double_play', sacFly: play.kind === 'sac_fly', sacBunt: play.kind === 'sac_bunt', error: play.error,
+    bunt: !!ball.bunt,
     throwTo: play.tgt, throwArrive: play.arrive != null ? r2(play.arrive) : null,
     runnerResults: play.runners.map((r) => ({
       id: r.id, from: r.from, to: (r.out || (play.caught && r.isBatter)) ? null : (r.onThrow ?? r.target),
@@ -1781,7 +2391,8 @@ export function resolveBattedBall(state, ball, fielding, rng = Math.random) {
     })),
   };
   const bs = s.stats[batter.id];
-  if (play.kind !== 'sac_fly') bs.ab += 1;
+  if (play.kind !== 'sac_fly' && play.kind !== 'sac_bunt') bs.ab += 1;
+  if (play.kind === 'sac_bunt') bs.sh = (bs.sh || 0) + 1;
   if (play.kind === 'hit' || play.kind === 'hr') {
     bs.h += 1;
     s.hits[bat] += 1;
@@ -1825,13 +2436,15 @@ export function choosePitch(state, rng = Math.random) {
   const pitcher = getPitcher(state);
   const pitches = pitcher.pitching?.pitches || [];
   const types = ['fastball', ...pitches.map((p) => p.type)];
-  const weights = [45, ...pitches.map((p) => 10 + p.level * 6)];
+  const fam2 = (t) => !!PITCH_TYPES[t]?.fastballFamily;
+  const weights = [45, ...pitches.map((p) => (fam2(p.type) ? 18 : 10) + (p.level ?? 3) * 3.6)];
   // 追い込んだら変化球を増やす
-  if (state.strikes === 2) for (let i = 1; i < weights.length; i++) weights[i] *= 1.5;
-  if (state.balls === 3) weights[0] *= 2;
+  if (state.strikes === 2) for (let i = 1; i < weights.length; i++) if (!fam2(types[i])) weights[i] *= 1.5;
+  if (state.balls === 3) for (let i = 0; i < weights.length; i++) if (fam2(types[i])) weights[i] *= 2;
   const type = types[pickWeighted(weights, rng)];
-  const pt = PITCH_TYPES[type];
-  const flip = pitcher.throws === '左' ? -1 : 1;
+  const br = pitchBreak(pitcher, type);
+  const pt = { dx: br.dx, dy: br.dy };
+  const flip = 1;
   let zone;
   const corners = state.strikes === 2 && state.balls <= 1 ? TUNING.cornerTwoStrike : state.balls === 3 ? TUNING.cornerThreeBall : TUNING.cornerBase;
   if (rng() < corners) {
@@ -1862,33 +2475,33 @@ export function choosePitch(state, rng = Math.random) {
  * @param {object} state
  * @param {{type:string, zone:{x:number,y:number}, loc?:{x:number,y:number}}} pitch loc があれば実位置で判断、なければ予想位置
  * @param {()=>number} [rng]
- * @returns {null|{zone:{x:number,y:number}, mode:'meet'|'power', timing:number}}
+ * @returns {null|{zone:{x:number,y:number}, pos:{x:number,y:number}, mode:'meet'|'power', timing:number}}
  */
 export function chooseSwing(state, pitch, rng = Math.random) {
   const T = TUNING;
   const batter = getBatter(state);
   const pitcher = getPitcher(state);
   const pt = PITCH_TYPES[pitch.type] || PITCH_TYPES.fastball;
-  const flip = pitcher.throws === '左' ? -1 : 1;
+  const br = pitchBreak(pitcher, PITCH_TYPES[pitch.type] ? pitch.type : 'fastball');
   const off = pitch.offset || { x: 0, y: 0 };
-  const loc = pitch.loc ?? { x: pitch.zone.x - 1 + (off.x || 0) + pt.dx * flip, y: pitch.zone.y - 1 + (off.y || 0) + pt.dy };
+  const loc = pitch.loc ?? { x: pitch.zone.x - 1 + (off.x || 0) + br.dx, y: pitch.zone.y - 1 + (off.y || 0) + br.dy };
   const inZone = Math.abs(loc.x) <= 1.5 && Math.abs(loc.y) <= 1.5;
   const eye = (batter.contact - 50) / 200; // 選球眼
   // カウント別スイング率（平均でゾーン内 約75%・ゾーン外 約25%）
   const st = Math.min(2, state.strikes);
-  let rate = inZone ? T.swingInZone[st] + eye : T.swingOutZone[st] - eye + (pt.read - 0.3) * 0.2;
+  let rate = inZone ? T.swingInZone[st] + eye
+    : (T.swingOutZone[st] - eye + (pt.read - 0.3) * 0.2) * fxNum(batter, '選球眼', 'swingOut', 1, state);
   if (state.balls === 3) rate *= state.strikes === 0 ? 0.3 : state.strikes === 1 ? 0.8 : 1;
   if (rng() >= rate) return null;
-  const noise = T.guessNoiseBase + ((100 - batter.contact) / 100) * T.guessNoiseContact;
-  const zone = {
-    x: clamp(Math.round(loc.x + gauss(rng) * noise) + 1, 0, 2),
-    y: clamp(Math.round(loc.y + gauss(rng) * noise) + 1, 0, 2),
-  };
+  const cont = batter.contact * condMult(state, batter.id);
+  const noise = T.posNoiseBase + ((100 - cont) / 100) * T.posNoiseContact;
+  const pos = { x: r2(loc.x + gauss(rng) * noise), y: r2(loc.y + gauss(rng) * noise) };
+  const zone = { x: clamp(Math.round(pos.x) + 1, 0, 2), y: clamp(Math.round(pos.y) + 1, 0, 2) };
   const v = velocityAbility(pitcher.pitching?.velocity ?? 135) / 99;
   const tSigma = T.timingBase + v * T.timingVel + ((100 - batter.contact) / 100) * T.timingContact + (pt.read - 0.15) * T.timingRead;
   const timing = clamp(gauss(rng) * tSigma, -1, 1);
   const mode = batter.power >= 75 && state.strikes < 2 && rng() < T.powerModeRate ? 'power' : 'meet';
-  return { zone, mode, timing };
+  return { zone, pos, mode, timing };
 }
 
 /* ------------------------------------------------------------------ */
@@ -1941,7 +2554,7 @@ export function boxScore(state) {
  * @returns {object} 終了時の GameState
  */
 export function simulateGame(homeTeam, awayTeam, rng = Math.random) {
-  let s = createGame(homeTeam, awayTeam, { userSide: null });
+  let s = createGame(homeTeam, awayTeam, { userSide: null, rng });
   let guard = 0;
   while (!s.over && guard++ < 5000) {
     const pitch = choosePitch(s, rng);
