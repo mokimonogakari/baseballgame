@@ -58,7 +58,7 @@ export function renderTitle(el, ctx) {
       <button class="menu-btn primary" data-act="game">たいせん（1試合）</button>
       <button class="menu-btn" data-act="team">チーム・選手</button>
       <button class="menu-btn" data-act="teamedit">オリジナルチーム</button>
-      <button class="menu-btn is-disabled" disabled>ペナント（準備中）</button>
+      <button class="menu-btn" data-act="challenge">⚾ 10球チャレンジ</button>
       <button class="menu-btn" data-act="settings">せってい</button>
     </div>
     <div class="hero">${chibiHTML(team.color, team.number ?? 1, 1.6)}</div>
@@ -73,6 +73,7 @@ export function renderTitle(el, ctx) {
     <div class="footer"><span>GitHub Pages で配信 ・ 球審ボイス VOICEVOX:青山龍星</span><span>v0.3</span></div>
   </div>`;
   el.querySelector('[data-act="game"]').onclick = () => ctx.go('game');
+  el.querySelector('[data-act="challenge"]').onclick = () => ctx.openChallenge();
   el.querySelector('[data-act="team"]').onclick = () => ctx.go('team');
   el.querySelector('[data-act="teamedit"]').onclick = () => ctx.go('teamedit');
   el.querySelector('[data-act="settings"]').onclick = () => ctx.go('settings');

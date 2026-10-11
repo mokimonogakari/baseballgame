@@ -106,6 +106,7 @@ export function createFieldingView(container, opts = {}) {
     return F.fenceLine + (F.fenceCenter - F.fenceLine) * c;
   };
   const userControlled = !!opts.userControlled;
+  const touchAssist = userControlled && typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
   const isHR = !!ball.isHomeRun || ball.type === 'hr';
   const type = isHR ? 'hr' : (ball.type || 'grounder');
   const outs = num(opts.state?.outs, 0);
@@ -456,12 +457,16 @@ ${userControlled && !isHR ? `
   }
 
   function setPrompt() {
+    root.dataset.phase = phase;
+    root.dataset.base = selBase || '';
     let txt = '';
     if (phase === 'hr') txt = '';
     else if (!userControlled) txt = '';
     else if (phase === 'live') txt = '↑↓←→:移動　Z:キャッチ／ダイブ　X:選手切替';
     else if (phase === 'bobble') txt = 'ボールを拾っています…';
     else if (phase === 'secured') txt = `↑2塁　←3塁　→1塁　↓本塁　Z:送球${selBase ? `（${BASE_NAME[selBase]}）` : ''}`;
+    if (touchAssist && phase === 'live') txt = 'おまかせ追球中 · 十字キーで動かせる · ダイブで好捕！';
+    if (touchAssist && phase === 'secured') txt = `投げる塁をタップ！${selBase ? ` おすすめ：${BASE_NAME[selBase]}` : ''}`;
     if (dom.prompt) { dom.prompt.textContent = txt; dom.prompt.style.display = txt ? '' : 'none'; }
     if (dom.zLabel) dom.zLabel.textContent = phase === 'secured' ? '送球' : 'キャッチ';
   }
@@ -628,6 +633,7 @@ ${userControlled && !isHR ? `
     phase = 'secured';
     securedAt = t;
     selBase = smartBase();
+    if (touchAssist) { try { opts.sound?.say?.('とった！ 塁をタップして送球！'); } catch {} }
     fielders.forEach((f) => { if (f !== holder && f.role !== 'cover') f.role = 'stay-still'; });
     setPrompt();
   }
@@ -720,7 +726,9 @@ ${userControlled && !isHR ? `
         const vx = (held.right ? 1 : 0) - (held.left ? 1 : 0);
         const vy = (held.up ? 1 : 0) - (held.down ? 1 : 0);
         const m = Math.hypot(vx, vy);
-        if (m > 0) { f.x += (vx / m) * f.speed * dt; f.y += (vy / m) * f.speed * dt; f.moving = true; } else f.moving = false;
+        if (m > 0) { f.x += (vx / m) * f.speed * dt; f.y += (vy / m) * f.speed * dt; f.moving = true; }
+        else if (touchAssist && t >= f.react) moveToward(f, intercept(f, t), dt);
+        else f.moving = false;
         f.x = clamp(f.x, -110, 110); f.y = clamp(f.y, -8, 130);
         continue;
       }
@@ -790,9 +798,11 @@ ${userControlled && !isHR ? `
 
   function frame(nowMs) {
     if (destroyed) return;
+    if (document.hidden) { lastNow = 0; Object.keys(held).forEach(k => held[k] = false); rafId = requestAnimationFrame(frame); return; }
     const dtReal = lastNow ? Math.min(0.05, (nowMs - lastNow) / 1000) : 0;
     lastNow = nowMs;
-    let acc = dtReal;
+    // Slow the entire play equally so runners and throw physics remain fair.
+    let acc = dtReal * (touchAssist && phase === 'secured' ? 0.4 : 1);
     while (acc > 1e-6 && phase !== 'done') {
       const d = Math.min(DT, acc);
       step(d);
@@ -851,6 +861,9 @@ ${userControlled && !isHR ? `
 
   function handleKey(key, isDown = true) {
     if (destroyed) return;
+    if (isDown && userControlled && phase === 'secured' && /^base[1-4]$/.test(key)) {
+      selBase = Number(key.slice(-1)); doThrow(selBase); return;
+    }
     if (key in held) {
       held[key] = !!isDown;
       if (isDown && userControlled && phase === 'secured' && KEY_BASE[key]) {

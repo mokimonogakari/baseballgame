@@ -1,0 +1,11 @@
+#challenge{position:fixed;inset:0;z-index:11000;background:#102039;color:#fff;display:flex;flex-direction:column;gap:10px;padding:max(12px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));font-family:system-ui,sans-serif;touch-action:manipulation}
+#challenge header{display:flex;justify-content:space-between;align-items:center;gap:8px}#challenge header b{font-size:clamp(14px,4vw,22px)}
+#challenge button{min-height:48px;border:0;border-radius:16px;background:#e3f2ff;color:#142847;font:700 16px system-ui;padding:8px 14px;cursor:pointer}
+#challenge button:focus-visible{outline:3px solid #fbce46;outline-offset:2px}#challenge canvas{width:100%;flex:1;min-height:80px;border-radius:22px;object-fit:contain}
+.ch-score{display:flex;justify-content:space-between;align-items:center;font-size:13px;gap:8px}.ch-score strong{font-size:25px;color:#ffe166}
+.ch-message{text-align:center;min-height:28px;font-weight:800;font-size:clamp(14px,4vw,19px)}.ch-progress{display:flex;gap:8px;justify-content:center;min-height:23px}.ch-progress .hr{color:#ffe166}.ch-progress .hit{color:#8fe5be}
+#challenge .ch-swing{background:#ffda55;box-shadow:0 5px 0 #ad7821;min-height:76px;font-size:26px;flex-shrink:0}#challenge .ch-swing:active{transform:translateY(3px)}#challenge button:disabled{opacity:.55}
+#challenge small{text-align:center;font-size:11px;color:#b9d2e3}body.challenge-open #rotate-hint,body.challenge-open #touch-ui{display:none!important}
+.rh-inner .ch-launch{border:0;border-radius:18px;background:#ffd54a;color:#1c2b4b;font:900 19px system-ui;min-height:64px;padding:14px 22px;max-width:100%}.rh-inner .ch-note{font-size:14px;color:white;margin:10px 0;letter-spacing:0;text-shadow:none}
+body[data-screen="title"] .rh-phone{animation:none;transform:none}body[data-screen="title"] .rh-arrow{display:none}.rh-inner [hidden]{display:none!important}
+@media(orientation:landscape) and (max-height:500px){#challenge{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto 1fr auto auto;gap:6px 16px}#challenge header{grid-column:1/-1}#challenge canvas{grid-column:1;grid-row:2/6;height:100%;min-height:0}.ch-score{grid-column:2}.ch-message{align-self:center}#challenge .ch-swing{min-height:58px}#challenge small{display:none}.ch-progress{grid-column:2}}

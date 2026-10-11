@@ -1,4 +1,5 @@
 import { TEAMS } from './data.js';
+import { openChallenge } from './challenge.js';
 import { renderTitle, renderTeam, renderResult, renderSettings } from './screens.js';
 import { createGameScreen } from './game.js';
 import { boxScore } from './engine.js';
@@ -37,7 +38,7 @@ function fitStage() {
 }
 
 const SETTINGS_KEY = 'dokidoki.settings';
-const DEFAULTS = { innings: 9, difficulty: 'normal', sound: true, music: true, musicVolume: 0.7 };
+const DEFAULTS = { innings: 3, difficulty: 'normal', sound: true, music: true, musicVolume: 0.7 };
 function loadSettings() {
   const out = { ...DEFAULTS };
   try {
@@ -51,7 +52,7 @@ function loadSettings() {
   return out;
 }
 const settings = loadSettings();
-const sound = createSound({ enabled: settings.sound });
+const sound = createSound({ enabled: settings.sound, onVoiceActivity: active => music.duck(active) });
 const music = createMusic({ enabled: settings.music, volume: settings.musicVolume });
 function saveSettings(patch) {
   Object.assign(settings, patch || {});
@@ -89,6 +90,7 @@ stage.addEventListener('click', (e) => {
 });
 
 const ctx = {
+  openChallenge: launchChallenge,
   sound, music, settings, saveSettings,
   get teams() { return myTeam ? [...TEAMS, myTeam] : TEAMS; },
   get userTeamId() { return userTeamId; },
@@ -99,6 +101,21 @@ const ctx = {
   go,
   onGameOver(state) { go('result', state); },
 };
+
+function launchChallenge() {
+  if (document.body.classList.contains('challenge-open')) return;
+  unlockAudio();
+  openChallenge({ sound, onClose() {} });
+}
+const quickButton = document.createElement('button');
+quickButton.className = 'ch-launch';
+quickButton.textContent = '⚾ 縦で遊ぶ · 10球チャレンジ';
+quickButton.onclick = launchChallenge;
+document.querySelector('.rh-inner').append(quickButton);
+const quickNote = document.createElement('p');
+quickNote.className = 'ch-note';
+quickNote.textContent = '片手でスイング！ 通常試合は横向きで遊べます';
+document.querySelector('.rh-inner').append(quickNote);
 
 /* ---------- あいてを選ぶ ---------- */
 function closeOppModal() {
@@ -158,6 +175,10 @@ function go(name, payload) {
   if (editScreen) { try { editScreen.destroy(); } catch (e) { console.error(e); } editScreen = null; }
   if (gameScreen) { try { gameScreen.destroy(); } catch (e) { console.error(e); } gameScreen = null; }
   current = name;
+  document.body.dataset.screen = name;
+  document.querySelector('.rh-inner > p').textContent = name === 'title' ? '片手で、ひと勝負！' : '横向きにしてあそんでね';
+  quickButton.hidden = name !== 'title';
+  quickNote.hidden = name !== 'title';
   try {
     if (name === 'title') music.play('title');
     else if (name === 'team' || name === 'teamedit') music.play('title');
@@ -217,6 +238,7 @@ function typingTarget(e) {
 }
 
 window.addEventListener('keydown', (e) => {
+  if (document.body.classList.contains('challenge-open')) return;
   if (typingTarget(e)) return;
   if (touch.isRotateBlocking()) { e.preventDefault(); return; } // 縦向きの「横向きにして」表示中は入力を止める
   if (oppModal) {
