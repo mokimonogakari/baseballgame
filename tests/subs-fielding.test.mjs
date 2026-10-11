@@ -324,3 +324,18 @@ test('フィルダースチョイスはオールセーフのときだけ（走�
   }
   assert.ok(fc >= 0);
 });
+
+test('autoUserPitcher: ユーザー側の継投も CPU 采配に任せられる（既定はしない）', () => {
+  const base = { ...newGame(), half: 'bottom' }; // 裏 = ユーザー（away）が守備
+  const pid = getPitcher(base).id;
+  base.stamina = { ...base.stamina, [pid]: 10 };
+  const off = cpuManage(base);
+  assert.equal(off.events.length, 0);
+  assert.equal(getPitcher(off.state).id, pid);
+  const on = cpuManage({ ...base, autoUserPitcher: true });
+  assert.equal(on.events.length, 1);
+  assert.equal(on.events[0].subType, 'pitcher');
+  assert.equal(on.events[0].side, 'away');
+  assert.notEqual(getPitcher(on.state).id, pid);
+  assert.equal(on.state.autoUserPitcher, true);
+});

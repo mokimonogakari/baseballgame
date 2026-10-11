@@ -19,6 +19,8 @@ let editScreen = null;
 let myTeam = loadMyTeam();
 let opponentTeamId = null;
 let oppModal = null;
+/** 試合前の「あいてを選ぶ」モーダル（false: たいせん・試合へ・もう一度あそぶ で即試合開始） */
+const OPPONENT_PICKER = false;
 
 let stageScale = 1;
 /** 1280×720 のステージを画面に収める。#stage-wrap の padding = safe-area（ノッチ）を除いた領域で計算 */
@@ -143,12 +145,15 @@ function openOppModal() {
 function gameCtx() {
   const teams = ctx.teams;
   const user = teams.find((t) => t.id === userTeamId) || teams[0];
-  let opp = teams.find((t) => t.id === opponentTeamId && t.id !== user.id) || teams.find((t) => t.id !== user.id);
-  return { ...ctx, teams: [user, opp], userTeamId: user.id };
+  const ui = teams.indexOf(user);
+  // 相手: 前に選んだチーム、無ければ一覧で自分の次のチーム（赤 → 青）
+  const next = teams.length > 1 ? teams[(ui + 1) % teams.length] : null;
+  const opp = teams.find((t) => t.id === opponentTeamId && t.id !== user.id) || (next && next.id !== user.id ? next : teams.find((t) => t.id !== user.id));
+  return { ...ctx, teams: [user, opp], userTeamId: user.id, opponentTeamId: opp?.id ?? null };
 }
 
 function go(name, payload) {
-  if (name === 'game' && !(payload && payload.confirmed)) { openOppModal(); return; }
+  if (OPPONENT_PICKER && name === 'game' && !(payload && payload.confirmed)) { openOppModal(); return; }
   closeOppModal();
   if (editScreen) { try { editScreen.destroy(); } catch (e) { console.error(e); } editScreen = null; }
   if (gameScreen) { try { gameScreen.destroy(); } catch (e) { console.error(e); } gameScreen = null; }

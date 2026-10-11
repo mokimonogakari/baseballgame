@@ -279,3 +279,7 @@ body.compact .te-sw{width:62px;height:62px}
 body.compact .te-msg{font-size:24px}
 body.touch.compact .dial-pitch .lv-bars{gap:3px}
 body.touch.compact .dial-pitch .lv-bars>i{width:9px;height:14px;border-radius:2px}
+/* 守備中（CPU が投げる）: 早送り（Z）と さいはい / メニュー だけ */
+#touch-ui[data-mode="play"][data-step="auto"] .tu-dpad,#touch-ui[data-mode="play"][data-step="auto"] .tu-x,#touch-ui[data-mode="play"][data-step="auto"] .tu-mini{display:none}
+#touch-ui[data-step="auto"] .tu-z{background:rgba(127,209,255,.88)}
+body.compact .auto-hint{font-size:22px}

@@ -8,8 +8,9 @@
  * - フィールドのドラッグでミートカーソル／投球の狙いを相対移動（トラックパッド風）。
  * - ゾーンのタップ: 打席ではカーソルをその位置へ動かし、投球後なら選んだ打ち方（ミート/強振/バント）でスイング。
  *   投球のコース選びでは狙いをその位置へ。10px 以上動かしたらドラッグ扱い（スイングしない）。
- * - 打席では「ミート / 強振 / バント」の切り替えと大きな「スイング」ボタン、投球では球種パネルのタップ・
- *   「決定」「投げる」「球種」ボタン（ラベルは場面ごとに game.touchInfo() から同期）。
+ * - 打席では「ミート / 強振 / バント」の切り替えと大きな「スイング」ボタン。守備中（CPU が投げる）は
+ *   「さいはい / メニュー」と大きな「早送り」ボタン（Z）だけ（data-step="auto"。ラベルは game.touchInfo() から同期）。
+ *   手動投球（game.js の MANUAL_PITCHING）では球種パネルのタップ・「決定」「投げる」「球種」ボタン。
  * - 縦向きでは「横向きにしてあそんでね」（#rotate-hint）を出して入力を止める。
  * - ダブルタップ拡大・ピンチ・長押しメニューなどスマホ特有の誤動作を抑える。
  *
@@ -246,6 +247,7 @@ export function initTouch({ stage, wrap, getGame, getCurrent, getScale }) {
     else if (info.step === 'select') { zb = '決定'; zl = pitchName(); }
     else if (info.step === 'aim') { zb = '投げる'; zl = pitchName(); xb = '球種'; xl = ''; }
     else if (info.step === 'windup') { zb = '投げる'; zl = 'もう一度'; }
+    else if (info.step === 'auto') { zb = '早送り'; zl = ''; xl = ''; } // 守備中は CPU が投げる
     set('z', zl, (v) => { tu.z.textContent = v; });
     set('x', xl, (v) => { tu.x.textContent = v; });
     set('zb', zb, (v) => { tu.zb.textContent = v; tu.zb.classList.toggle('tu-word', v.length > 1); });

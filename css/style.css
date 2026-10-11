@@ -408,3 +408,13 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .shin-flash{transform:translate(-50%,-50%);font-size:54px;font-weight:900;color:#FF4FA3;text-shadow:3px 3px 0 #1C2B4B,-2px -2px 0 #1C2B4B,2px -2px 0 #1C2B4B,-2px 2px 0 #1C2B4B;z-index:8;pointer-events:none;opacity:0;white-space:nowrap}
 .shin-flash.go{animation:shin-pop .8s ease-out}
 @keyframes shin-pop{0%{opacity:0;transform:translate(-50%,-50%) scale(.4)}15%{opacity:1;transform:translate(-50%,-110%) scale(1.25)}70%{opacity:1;transform:translate(-50%,-120%) scale(1)}100%{opacity:0;transform:translate(-50%,-140%) scale(1)}}
+/* 打球の落下点（CPU 守備で即解決する試合形式） */
+.land-mark{position:absolute;left:0;top:0;width:44px;height:22px;border-radius:50%;border:3px solid #FFD54A;box-shadow:0 0 0 2px rgba(28,43,75,.6),inset 0 0 0 2px rgba(28,43,75,.35);background:rgba(255,213,74,.22);z-index:3;pointer-events:none;opacity:0;transform:translate(-50%,-50%)}
+.land-mark.is-ground{border-color:#fff;background:rgba(255,255,255,.18)}
+.land-mark.show{opacity:1;animation:land-pulse .5s ease-in-out infinite alternate}
+@keyframes land-pulse{from{border-width:3px}to{border-width:5px}}
+/* 守備中（CPU が投げる）のヒントと、使わない操作ボタン */
+.auto-hint{position:absolute;left:640px;top:372px;transform:translateX(-50%);padding:4px 14px;border-radius:999px;background:rgba(14,24,48,.78);color:#FFD54A;font-size:15px;font-weight:900;white-space:nowrap;z-index:6;pointer-events:none;display:none}
+.auto-hint.show{display:block}
+.game.is-auto .dpad,.game.is-auto .btn-x{display:none}
+@media (prefers-reduced-motion: reduce){.land-mark.show{animation:none}}

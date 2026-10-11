@@ -1000,7 +1000,7 @@ function ensureDefense(s, side, event) {
   if (team.lineup.includes(curId) && pos[curId] === '投' && !s.removed[side].includes(curId)) return;
   const holder = team.lineup.find((id) => pos[id] === '投');
   const lead = total(s, side) - total(s, other(side));
-  const save = side !== s.userSide && s.inning >= s.innings && lead > 0 && lead <= 3;
+  const save = cpuPitches(s, side) && s.inning >= s.innings && lead > 0 && lead <= 3;
   const cand = (save && pickRelief(s, side, { closer: true })) || pickRelief(s, side);
   let p;
   if (cand) {
@@ -1099,10 +1099,15 @@ function cpuFixDefense(s, side, event) {
   }
 }
 
+/** その側の投手起用を CPU が受け持つか（CPU 側、または state.autoUserPitcher = true のユーザー側） */
+function cpuPitches(s, side) {
+  return side !== s.userSide || !!s.autoUserPitcher;
+}
+
 function cpuManageMut(s, rng) {
   const events = [];
   if (s.over || s.pending) return events;
-  if (fieldingSide(s) !== s.userSide) {
+  if (cpuPitches(s, fieldingSide(s))) {
     const ev = cpuPitcherChange(s);
     if (ev) events.push(ev);
   }
@@ -1112,6 +1117,7 @@ function cpuManageMut(s, rng) {
 
 /**
  * CPU 側（userSide でないチーム）の采配: 投手交代・代打・代走。
+ * state.autoUserPitcher = true なら、ユーザー側の投手交代（継投・抑え）も CPU と同じ基準で行う（代打・代走はしない）。
  * resolvePitch / pitchContact / resolveBattedBall が打席終了ごとに自動で呼ぶ。
  * @param {object} state
  * @param {()=>number} [rng]

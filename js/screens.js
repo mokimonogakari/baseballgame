@@ -64,10 +64,10 @@ export function renderTitle(el, ctx) {
     <div class="hero">${chibiHTML(team.color, team.number ?? 1, 1.6)}</div>
     <div class="guide">
       <h3>あそびかた</h3>
-      <div class="row"><b>矢印キー</b><span>コース移動</span></div>
-      <div class="row"><b>Z</b><span>ミート / 投球</span></div>
-      <div class="row"><b>X</b><span>強振 / 変化球</span></div>
-      <div class="row"><b>Enter</b><span>決定</span></div>
+      <div class="row"><b>矢印キー</b><span>カーソル移動</span></div>
+      <div class="row"><b>Z</b><span>ミート / 早送り</span></div>
+      <div class="row"><b>X</b><span>強振</span></div>
+      <div class="row"><b>Enter</b><span>決定 / 見送り</span></div>
       <div class="row"><b>Esc</b><span>戻る</span></div>
     </div>
     <div class="footer"><span>GitHub Pages で配信 ・ 球審ボイス VOICEVOX:青山龍星</span><span>v0.3</span></div>

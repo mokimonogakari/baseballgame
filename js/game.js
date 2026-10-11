@@ -11,7 +11,10 @@
  *          settings?: { innings:3|6|9, difficulty:'easy'|'normal'|'hard', sound:boolean },
  *          sound?: { play(name) }, music?: { duck(bool) } }
  *
- * 打球（本塁打以外）は js/fielding.js の守備ビューで再生し、結果を engine.resolveBattedBall に渡す。
+ * 打球（本塁打以外）は CPU 守備（engine.autoField）で即座に解決し、試合画面上で打球の飛行と落下点を見せる。
+ *   MANUAL_FIELDING = true にすると js/fielding.js の守備ビュー（追いかけ操作）に戻る。
+ * ユーザーの守備中は CPU が自動で投げる（engine.choosePitch。Z/Enter/タップで早送り）。
+ *   MANUAL_PITCHING = true にすると球種パネル・コース選び・ナイスピッチの手動投球に戻る。
  * 采配（選手交代）は js/subs.js のメニュー（ヘッダーの「さいはい」ボタン / 投球前の Esc）。
  */
 import * as engine from './engine.js';
@@ -19,6 +22,13 @@ import { rank, RANK_COLORS, PITCH_TYPES } from './data.js';
 import * as data from './data.js';
 import { createFieldingView } from './fielding.js';
 import { openSubsMenu } from './subs.js';
+
+// ---- 試合形式の切り替え（false = シンプルな試合形式） ----
+const MANUAL_FIELDING = false;      // true: 打球を守備ビュー（fielding.js）で追いかける
+const MANUAL_PITCHING = false;      // true: ユーザーの守備中に自分で投げる（球種パネル・コース・ナイスピッチ）
+const AUTO_PITCH_MS = 1400;         // 自動投球の間隔（守備中。Z/Enter/タップで早送り）
+const USER_RELIEF_STAMINA = 25;     // ユーザー投手の自動交代（残りスタミナがこれ未満で救援を送る。CPU と同じ基準）
+const AUTO_HINT = 'CPUが投げています（Z/タップで早送り）';
 
 // ---- レイアウト定数（1280x720 ステージ座標） ----
 const ZONE_LEFT = 520;
@@ -399,7 +409,7 @@ export function createGameScreen(el, ctx) {
   let state = null;
   let userTeam = null;
   let cpuTeam = null;
-  let phase = 'idle'; // idle | ready | menu | pitching | fielding | resolve | change | over
+  let phase = 'idle'; // idle | ready | menu | pitching | inplay | fielding | resolve | change | over
   let cursor = { x: 0, y: 0 };   // ミートカーソル（セル単位・ゾーン中心 0）
   let aim = { x: 0, y: 0 };      // 投球の狙い（セル単位・ゾーン中心 0、ゾーン外も可）
   let pitchIdx = 0;              // ユーザー投手の球種インデックス
@@ -642,6 +652,8 @@ export function createGameScreen(el, ctx) {
 
   <div class="zone">${cells.join('')}</div>
   <div class="ghost" data-ref="ghost"></div>
+  <div class="land-mark" data-ref="land-mark"></div>
+  <div class="auto-hint" data-ref="auto-hint">${esc(AUTO_HINT)}</div>
   <div class="cursor" data-ref="cursor"><i class="cursor-core" data-ref="cursor-core"></i></div>
   <div class="aim-ring" data-ref="aim-ring"></div>
   <div class="aim" data-ref="aim"></div>
@@ -714,6 +726,8 @@ export function createGameScreen(el, ctx) {
       pStaminaNum: q('[data-ref="p-stamina-num"]'),
       bHand: q('[data-ref="b-hand"]'),
       ghost: q('[data-ref="ghost"]'),
+      landMark: q('[data-ref="land-mark"]'),
+      autoHint: q('[data-ref="auto-hint"]'),
       spark: q('[data-ref="spark"]'),
       ballShadow: q('[data-ref="ball-shadow"]'),
       pPitches: q('[data-ref="p-pitches"]'),
@@ -797,7 +811,7 @@ export function createGameScreen(el, ctx) {
       dom.pStamina.classList.toggle('low', st.ratio < 0.3);
       if (dom.pStaminaNum) dom.pStaminaNum.textContent = Math.round(st.cur);
       const list = userPitches();
-      dom.pPitches.innerHTML = list.map((p, i) => `<li class="pitch-item${userPitching && i === pitchIdx ? ' selected' : ''}" data-type="${esc(p.type)}" title="${esc(p.name)}${p.type !== 'fastball' ? ` 変化量${esc(p.level ?? 0)}` : ''}"><span><em class="pi-dir">${p.dir === '●' ? '' : esc(p.dir)}</em>${esc(p.name)}</span>${p.type !== 'fastball' ? levelBars(p.level, 'pi-lv') : ''}</li>`).join('');
+      dom.pPitches.innerHTML = list.map((p, i) => `<li class="pitch-item${MANUAL_PITCHING && userPitching && i === pitchIdx ? ' selected' : ''}" data-type="${esc(p.type)}" title="${esc(p.name)}${p.type !== 'fastball' ? ` 変化量${esc(p.level ?? 0)}` : ''}"><span><em class="pi-dir">${p.dir === '●' ? '' : esc(p.dir)}</em>${esc(p.name)}</span>${p.type !== 'fastball' ? levelBars(p.level, 'pi-lv') : ''}</li>`).join('');
       if (dom.pCond) dom.pCond.innerHTML = condHTML(pitcher);
       if (dom.pSkills) dom.pSkills.innerHTML = skillChips(pitcher);
       dom.pCount.textContent = state.pitchCount?.[fSide] ?? 0;
@@ -852,8 +866,11 @@ export function createGameScreen(el, ctx) {
     // zone / cursor / 投球パネル
     const batting = userBatting();
     const selecting = !batting && phase === 'ready' && pitchStep === 'select';
-    if (dom.xLabel) dom.xLabel.textContent = batting ? '強振' : selecting ? '決定' : '球種';
-    if (dom.zLabel) dom.zLabel.textContent = batting ? (buntStance ? 'バント' : 'ミート') : selecting ? '決定' : '投げる';
+    const auto = autoFielding();
+    if (dom.root) dom.root.classList.toggle('is-auto', auto);
+    if (dom.autoHint) dom.autoHint.classList.toggle('show', auto && (phase === 'ready' || phase === 'pitching') && !subsMenu);
+    if (dom.xLabel) dom.xLabel.textContent = batting ? '強振' : auto ? '' : selecting ? '決定' : '球種';
+    if (dom.zLabel) dom.zLabel.textContent = batting ? (buntStance ? 'バント' : 'ミート') : auto ? '早送り' : selecting ? '決定' : '投げる';
     const cand = batting && phase === 'ready' ? stealCandidate() : null;
     const canSteal = !!cand && typeof engine.attemptSteal === 'function';
     if (dom.stealPrompt) {
@@ -873,7 +890,7 @@ export function createGameScreen(el, ctx) {
   /** 球種パネル（パワプロの方向図）。中央 = ストレート、各球種は変化方向のマスへ */
   function renderDial() {
     if (!dom.dial) return;
-    const show = !userBatting() && phase === 'ready' && pitchStep === 'select' && !subsMenu;
+    const show = MANUAL_PITCHING && !userBatting() && phase === 'ready' && pitchStep === 'select' && !subsMenu;
     dom.dial.classList.toggle('show', show);
     if (!show) return;
     const list = userPitches();
@@ -913,7 +930,7 @@ export function createGameScreen(el, ctx) {
         }
       }
     }
-    const showAim = !batting && phase === 'ready' && (pitchStep === 'aim' || pitchStep === 'windup') && !subsMenu;
+    const showAim = MANUAL_PITCHING && !batting && phase === 'ready' && (pitchStep === 'aim' || pitchStep === 'windup') && !subsMenu;
     if (dom.aim) {
       dom.aim.style.display = showAim ? '' : 'none';
       dom.aimRing.style.display = showAim ? '' : 'none';
@@ -1049,6 +1066,7 @@ export function createGameScreen(el, ctx) {
 
   // ---------- flow ----------
   function readyHint() {
+    if (!userBatting() && !MANUAL_PITCHING) return AUTO_HINT;
     if (touchUI()) {
       if (userBatting()) return 'タップ:ゾーンでスイング・ドラッグでカーソル';
       return pitchStep === 'aim' ? 'タップでコース（ゾーン外も可）→ 投げる' : 'タップで球種 → もう一度タップで決定';
@@ -1077,9 +1095,39 @@ export function createGameScreen(el, ctx) {
       else swingPref = 'meet';
     }
     if (steal) clearSteal();
-    if (/^(矢印|←→↑↓|タップ)/.test(tickerText)) tickerText = readyHint();
+    if (/^(矢印|←→↑↓|タップ|CPUが投げて)/.test(tickerText)) tickerText = readyHint();
+    // 自分で投げない試合形式: 疲れたユーザー投手は自動で交代（CPU と同じ基準）
+    if (autoManageUserPitcher()) {
+      phase = 'resolve';
+      render();
+      showSubs(takeNewSubs(), () => enterReady());
+      return;
+    }
     render();
     scheduleAutoPitch();
+  }
+
+  /** ユーザーの守備中で、CPU が代わりに投げる状態か */
+  function autoFielding() {
+    return !MANUAL_PITCHING && !!state && !userBatting();
+  }
+
+  /** ユーザー投手のスタミナ切れ → 救援投手へ自動交代（engine.changePitcher の既定 = CPU と同じ選択）。交代したら true */
+  function autoManageUserPitcher() {
+    if (!autoFielding() || state.pending || state.over || engine.isGameOver(state) || typeof engine.changePitcher !== 'function') return false;
+    const side = userSide();
+    const cur = engine.getPitcher(state);
+    if (!cur || staminaOf(cur).cur >= USER_RELIEF_STAMINA) return false;
+    try {
+      if (typeof engine.availablePitchers === 'function' && !engine.availablePitchers(state, side).length) return false;
+      const next = engine.changePitcher(state, side);
+      if (!next || engine.getPitcher(next)?.id === cur.id) return false;
+      state = next;
+      return true;
+    } catch (e) {
+      console.warn(e);
+      return false;
+    }
   }
 
   // ---------- 盗塁 ----------
@@ -1149,7 +1197,12 @@ export function createGameScreen(el, ctx) {
   function scheduleAutoPitch() {
     cancel(autoPitchTimer);
     autoPitchTimer = 0;
-    if (!userBatting() || phase !== 'ready') return;
+    if (phase !== 'ready') return;
+    if (autoFielding()) {
+      autoPitchTimer = later(() => { autoPitchTimer = 0; if (phase === 'ready' && !subsMenu) cpuThrow(); }, AUTO_PITCH_MS);
+      return;
+    }
+    if (!userBatting()) return;
     autoPitchTimer = later(() => { autoPitchTimer = 0; if (phase === 'ready' && !subsMenu) startCpuPitch(false); }, CPU_PITCH_DELAY_MS);
   }
 
@@ -1159,6 +1212,7 @@ export function createGameScreen(el, ctx) {
     if (dom.ball) { dom.ball.style.opacity = '0'; dom.ball.classList.remove('flying'); }
     if (dom.ballShadow) { dom.ballShadow.style.opacity = '0'; dom.ballShadow.classList.remove('pitch'); dom.ballShadow.style.transform = ''; }
     if (dom.ghost) { dom.ghost.classList.remove('show'); dom.ghost.style.opacity = '0'; }
+    if (dom.landMark) dom.landMark.classList.remove('show');
   }
 
   function startFlight(pitch, finalLoc, onArrive) {
@@ -1303,6 +1357,29 @@ export function createGameScreen(el, ctx) {
     startFlight(pitchInput, loc, () => handleContact(prev, res));
   }
 
+  /** CPU がユーザーの投手で投げる（自分で投げない試合形式）。CPU 打者は chooseSwing でスイング */
+  function cpuThrow() {
+    if (phase !== 'ready' || subsMenu || userBatting()) return;
+    cancel(autoPitchTimer);
+    autoPitchTimer = 0;
+    const pitchInput = engine.choosePitch(state, rng);
+    if (!pitchInput) return;
+    const batInput = engine.chooseSwing(state, pitchInput, rng) || null;
+    phase = 'pitching';
+    const prev = state;
+    const res = engine.pitchContact(state, pitchInput, batInput, rng);
+    const evLoc = res?.event?.pitch?.loc ?? res?.event?.location;
+    const loc = validLoc(evLoc) ? { x: Number(evLoc.x), y: Number(evLoc.y) } : predictLoc(pitchInput);
+    const name = PITCH_TYPES[pitchInput.type]?.name || '';
+    tickerText = `${engine.getPitcher(prev)?.name ?? '投手'}、${name ? `${name}を` : ''}投げた！`;
+    render();
+    if (batInput?.mode === 'bunt') setBuntPose(true);
+    else if (batInput) {
+      later(() => { if (phase === 'pitching') { play('swing'); swingAnim(batInput.mode); } }, Math.max(0, diff.flight - SWING_CONTACT_MS));
+    }
+    startFlight(pitchInput, loc, () => handleContact(prev, res));
+  }
+
   function finishPitch(pitch, batInput) {
     if (phase !== 'pitching') return;
     const prev = state;
@@ -1319,8 +1396,96 @@ export function createGameScreen(el, ctx) {
   /** pitchContact の結果を振り分け: 打球（本塁打以外）は守備ビューへ、それ以外は即結果表示 */
   function handleContact(prev, res) {
     if (destroyed) return;
-    if (res?.ball && !res.ball.isHomeRun && res.state?.pending) startInPlay(prev, res);
-    else applyResult(prev, res);
+    if (res?.ball && !res.ball.isHomeRun && res.state?.pending) {
+      if (MANUAL_FIELDING) startInPlay(prev, res);
+      else autoInPlay(prev, res);
+    } else applyResult(prev, res);
+  }
+
+  // ---------- 打球 → CPU 守備で即解決（試合画面で打球の飛行を見せる） ----------
+  function autoInPlay(prev, res) {
+    if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+    phase = 'inplay';
+    const wasUserBatting = battingSide(prev) === (prev.userSide || 'away');
+    const batter = engine.getBatter(prev);
+    const ball = res.ball;
+    let out = null;
+    for (let i = 0; i < 3 && !out; i++) {
+      try { out = engine.resolveBattedBall(res.state, ball, engine.autoField(res.state, ball, rng), rng); } catch (e) { console.warn(e); }
+    }
+    if (!out) { console.error('resolveBattedBall failed'); out = { state: { ...res.state, pending: null }, event: { kind: 'out', text: 'アウト', runs: 0 } }; }
+    state = res.state;
+    if (dom.ghost) { dom.ghost.classList.remove('show'); dom.ghost.style.opacity = '0'; }
+    play('hit');
+    const c = wasUserBatting && dom.cursor
+      ? { x: ZONE_CX + cursor.x * CELL, y: ZONE_CY + cursor.y * CELL }
+      : ballCenter();
+    sparkAt(c.x, c.y);
+    contactFx(res.event, c.x, c.y);
+    tickerText = `${res.event?.contactTier === 'shin2' ? '真芯でとらえた！ ' : ''}${batter?.name ?? ''}、${res.event?.bunt ? 'バント！' : '打った！'}`;
+    render();
+    const ms = animateInPlay(ball, out.event, c);
+    later(() => applyResult(prev, out, { fromField: true, wasUserBatting }), ms);
+  }
+
+  /** フィールド座標（m。本塁 0,0、+y センター、+x 一塁側）→ 試合画面（捕手視点）のステージ座標 */
+  function fieldToStage(p) {
+    const X = Number(p?.x) || 0;
+    const Y = clamp(Number(p?.y) || 0, 0, 140);
+    const k = Y / 122;
+    return {
+      x: clamp(PLATE_X + X * 7 * (1 - 0.55 * Math.min(k, 1.1)), 16, 1264),
+      y: clamp(PLATE_Y - 380 * Math.pow(k, 0.75), 214, PLATE_Y),
+    };
+  }
+
+  /** 打球の飛行（ゴロは地を這い、フライは山なり）と落下点マーカー。所要時間（ms）を返す */
+  function animateInPlay(ball, event, from) {
+    if (!dom.ball) return HIT_FLY_MS;
+    const type = ball?.type || 'grounder';
+    const target = type === 'grounder' ? (event?.fielding?.fieldedAt || ball?.landing) : (ball?.landing || event?.fielding?.fieldedAt);
+    const to = fieldToStage(target || { x: (Number(ball?.dirDeg) || 0) * 0.6, y: 40 });
+    const s0 = from || ballCenter();
+    const arc = { grounder: 14, liner: 70, fly: 230, popup: 300 }[type] ?? 120;
+    const ms = { grounder: 700, liner: 760, fly: 1050, popup: 1000 }[type] ?? HIT_FLY_MS;
+    const depth = clamp((Number(target?.y) || 0) / 122, 0, 1.1);
+    const endScale = clamp(1 - 0.6 * depth, 0.35, 1);
+    if (dom.landMark) {
+      dom.landMark.style.left = `${to.x.toFixed(1)}px`;
+      dom.landMark.style.top = `${to.y.toFixed(1)}px`;
+      dom.landMark.style.transform = `translate(-50%,-50%) scale(${(0.5 + 0.5 * endScale).toFixed(2)})`;
+      dom.landMark.classList.toggle('is-ground', type === 'grounder');
+      restartAnim(dom.landMark, 'show');
+    }
+    const start = now();
+    const node = dom.ball, shadow = dom.ballShadow;
+    node.classList.add('flying');
+    node.style.opacity = '1';
+    if (shadow) { shadow.classList.add('pitch'); shadow.style.opacity = '0.8'; }
+    if (hitRaf) cancelAnimationFrame(hitRaf);
+    const bounces = type === 'grounder' ? 3 : 1;
+    const step = () => {
+      if (destroyed) return;
+      const t = clamp((now() - start) / ms, 0, 1);
+      const e = type === 'grounder' ? 1 - Math.pow(1 - t, 1.6) : t;
+      const gx = s0.x + (to.x - s0.x) * e;
+      const gy = s0.y + (to.y - s0.y) * e;
+      const u = (t * bounces) % 1;
+      const h = arc * (bounces > 1 ? Math.pow(0.55, Math.floor(t * bounces)) : 1) * 4 * u * (1 - u);
+      const sc = 1 + (endScale - 1) * e;
+      node.style.left = `${(gx - BALL_HALF).toFixed(1)}px`;
+      node.style.top = `${(gy - h * sc - BALL_HALF).toFixed(1)}px`;
+      node.style.transform = `scale(${sc.toFixed(3)})`;
+      if (shadow) {
+        shadow.style.left = `${gx.toFixed(1)}px`;
+        shadow.style.top = `${gy.toFixed(1)}px`;
+        shadow.style.transform = `scale(${(sc * 1.2).toFixed(3)})`;
+      }
+      if (t < 1) hitRaf = requestAnimationFrame(step);
+      else hitRaf = 0;
+    };
+    hitRaf = requestAnimationFrame(step);
+    return ms + 120;
   }
 
   // ---------- 打球 → 守備ビュー ----------
@@ -1741,6 +1906,11 @@ export function createGameScreen(el, ctx) {
       if (key === 'enter' && phase === 'ready') startCpuPitch(true);
       return;
     }
+    // 自分で投げない試合形式: Z / Enter で次の投球まで早送り（矢印・X は使わない）
+    if (!MANUAL_PITCHING) {
+      if ((key === 'z' || key === 'enter') && phase === 'ready') cpuThrow();
+      return;
+    }
     // ユーザー投球: 球種パネル → コース
     if (phase !== 'ready') return;
     if (pitchStep === 'select') {
@@ -1812,6 +1982,7 @@ export function createGameScreen(el, ctx) {
     const batting = userBatting();
     let step = '';
     if (batting) step = phase === 'ready' || phase === 'pitching' ? 'bat' : '';
+    else if (!MANUAL_PITCHING) step = 'auto';
     else if (phase === 'ready') step = pitchStep;
     const canBunt = batting && (phase === 'ready' || (phase === 'pitching' && !!flight && !flight.swung && !flight.take));
     return { step, swingMode: currentSwingMode(), canBunt };
@@ -1851,6 +2022,7 @@ export function createGameScreen(el, ctx) {
       if (phase === 'pitching' && flight && !flight.take) flight.hold = now();
       return true;
     }
+    if (autoFielding()) return phase === 'ready'; // タップで早送り
     if (phase === 'ready' && pitchStep === 'aim') {
       const lim = AIM_LIMIT + 0.3;
       return Math.abs(p.x) <= lim && Math.abs(p.y) <= lim;
@@ -1891,6 +2063,11 @@ export function createGameScreen(el, ctx) {
       }
       releaseHold();
       return 'move';
+    }
+    if (autoFielding()) {
+      if (phase !== 'ready') return null;
+      cpuThrow();
+      return 'skip';
     }
     if (phase === 'ready' && pitchStep === 'aim') {
       aim.x = clamp(p.x, -AIM_LIMIT, AIM_LIMIT);
@@ -1941,6 +2118,8 @@ export function createGameScreen(el, ctx) {
     state = engine.createGame(cpuTeam, userTeam, { innings, userSide: 'away', rng: Math.random }); // rng: 調子を試合ごとに変える
     if (!state) throw new Error('game.js: engine.createGame が GameState を返しませんでした');
     if (!state.userSide) state = { ...state, userSide: 'away' };
+    // 自分で投げない試合形式: ユーザー側の継投（スタミナ切れ・終盤の抑え）もエンジンの CPU 采配に任せる
+    if (!MANUAL_PITCHING) state = { ...state, autoUserPitcher: true };
     logSeen = (state.log || []).length;
     phase = 'idle';
     cursor = { x: 0, y: 0 };
