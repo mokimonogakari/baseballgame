@@ -22,6 +22,7 @@ import { rank, RANK_COLORS, PITCH_TYPES } from './data.js';
 import * as data from './data.js';
 import { createFieldingView } from './fielding.js';
 import { openSubsMenu } from './subs.js';
+import { createCommentary } from './commentary.js';
 
 // ---- 試合形式の切り替え（false = シンプルな試合形式） ----
 const MANUAL_FIELDING = false;      // true: 打球を守備ビュー（fielding.js）で追いかける
@@ -43,10 +44,22 @@ const BALL_HALF = 12;
 // 難易度ごとの投球時間とタイミング許容幅（easy はゴースト表示あり）
 const DIFFICULTY = {
   // ghost: 着弾点マーカー（at = 表示開始〔投球の進み 0..1〕, alpha = 濃さ）。easy は早く、hard は遅く薄く
-  easy: { flight: 900, timing: 400, ghost: { at: 0, alpha: 1 } },
-  normal: { flight: 700, timing: 300, ghost: { at: 0.35, alpha: 0.7 } },
-  hard: { flight: 550, timing: 220, ghost: { at: 0.62, alpha: 0.4 } },
+  // flight: 投手の球速が分からない時の到達時間。speedK: 球速から求めた到達時間に掛ける倍率
+  easy: { flight: 900, speedK: 1.35, timing: 400, ghost: { at: 0, alpha: 1 } },
+  normal: { flight: 700, speedK: 1, timing: 300, ghost: { at: 0.35, alpha: 0.7 } },
+  hard: { flight: 550, speedK: 0.82, timing: 220, ghost: { at: 0.62, alpha: 0.4 } },
 };
+// 球速 → 到達時間（engine.pitchFlightMs が無い時）: 145km/h で FLIGHT_BASE_MS、速いほど短く、遅い球（変化球）ほど長く
+const FLIGHT_BASE_MS = 620;
+const FLIGHT_REF_KMH = 145;
+const FLIGHT_EXP = 1.3;
+/** 球種ごとの球速の比率（ストレート = 1）。data.PITCH_TYPES[type].speed があればそちらを使う */
+const PITCH_SPEED = { fastball: 1, twoseam: 0.97, cutter: 0.95, shoot: 0.93, splitter: 0.91, fork: 0.89, slider: 0.88, sinker: 0.88, changeup: 0.83, palm: 0.8, curve: 0.78 };
+const WINDUP_PITCH_MS = 650;     // CPU 投手の投球モーション（毎回同じ長さ → 打者がタイミングを取れる）
+const WINDUP_AUTO_MS = 420;      // ユーザーの守備中（CPU が代わりに投げる）の短いモーション
+const HITSTOP_MS = 70;           // 真芯のヒットストップ
+const HR_FX_MS = 3000;           // ホームラン演出（タップ/Z でスキップ）
+const PITCH_INFO_MS = 1700;      // 「ストレート 148km/h」テロップ
 const HIT_FLY_MS = 800;
 const PLATE_X = 640;
 const PLATE_Y = 610;
@@ -54,7 +67,7 @@ const TAKE_GRACE_MS = 150;
 const RESULT_MS = 900;
 const CHANGE_MS = 1200;
 const GAMESET_MS = 1500;
-const CPU_PITCH_DELAY_MS = 1100;
+const CPU_PITCH_DELAY_MS = 800;  // 打席の準備 → 投球モーション開始（モーション WINDUP_PITCH_MS が続く）
 const BATTER_SCALE = 0.9;
 const BATTER_LEFT_R = 396; // 右打者（三塁側 = 画面左）。transform-origin は左上
 const BATTER_LEFT_L = 1280 - BATTER_LEFT_R; // 左打者（一塁側）= 鏡像（scaleX 負で左へ伸びる）
@@ -66,7 +79,12 @@ const SUB_OVERLAY_MS = 1100;
 const SUB_LABEL = { pitcher: 'ピッチャー交代', pinch_hit: '代打', pinch_run: '代走', defense: '守備交代' };
 
 // ---- パワプロ風の操作 ----
-const CURSOR_SPEED = 3;          // ミートカーソルの移動速度（セル/秒）
+// ミートカーソルの移動: 押し始めはゆっくり（微調整）→ 押し続けると加速（離したら即停止）
+const CURSOR_V0 = 1.5;           // 押し始めの速度（セル/秒）
+const CURSOR_VMAX = 6;           // 最高速度（セル/秒）
+const CURSOR_HOLD_MS = 70;       // この間は V0 のまま
+const CURSOR_RAMP_MS = 180;      // その後この時間で VMAX まで加速
+const CURSOR_SPEED_K = [0.6, 0.8, 1, 1.2, 1.45]; // 設定「カーソル速度」1〜5 の倍率
 const CURSOR_LIMIT = 2;          // ゾーン中心からの可動範囲（セル）
 const AIM_SPEED = 3;             // 投球カーソルの移動速度（セル/秒）
 const AIM_LIMIT = 2.4;           // 投球の狙いの可動範囲（ゾーン外へ大きく外せる）
@@ -127,9 +145,11 @@ function levelBars(level, cls = '') {
 
 const CHIBI_HEAD = '<div class="chibi-head"><div class="chibi-cap"></div><div class="chibi-cap-button"></div><div class="chibi-brim"></div><div class="chibi-eye l"><i class="chibi-shine"></i></div><div class="chibi-eye r"><i class="chibi-shine"></i></div><div class="chibi-cheek l"></div><div class="chibi-cheek r"></div><div class="chibi-mouth"></div></div>';
 
-function chibiHTML(extraClass, color, number) {
-  return `<div class="chibi ${extraClass}" style="--team:${esc(color)}">${CHIBI_HEAD}<div class="chibi-body">${esc(number)}</div><div class="chibi-legs"><i></i><i></i></div></div>`;
+function chibiHTML(extraClass, color, number, extra = '') {
+  return `<div class="chibi ${extraClass}" style="--team:${esc(color)}">${CHIBI_HEAD}<div class="chibi-body">${esc(number)}</div><div class="chibi-legs"><i></i><i></i></div>${extra}</div>`;
 }
+/** 投手のちびキャラ（投球モーション用の腕 2 本: 投げる腕にボール、反対の腕にグラブ） */
+const PITCHER_ARMS = '<i class="pt-arm pt-throw"><i class="pt-ball"></i></i><i class="pt-arm pt-glove"><i class="pt-mitt"></i></i>';
 
 /*
  * 打者ちびキャラ（捕手視点）。右打者の向きで組み、左打者は .chibi-batter 自体を scaleX(-1)。
@@ -346,6 +366,8 @@ function overlayFor(event) {
     case 'sac_fly': return '犠牲フライ';
     case 'strikeout': return '三振！';
     case 'walk': return '四球';
+    case 'hbp': return 'デッドボール';
+    case 'ibb': return '敬遠';
     case 'sac_bunt': return '送りバント成功！';
     case 'steal': return '盗塁成功！';
     case 'caught_stealing': return 'アウト！（盗塁失敗）';
@@ -365,6 +387,8 @@ function chipFor(event) {
     case 'sac_fly': return '犠飛';
     case 'strikeout': return '三振';
     case 'walk': return '四球';
+    case 'hbp': return '死球';
+    case 'ibb': return '敬遠';
     case 'sac_bunt': return '犠打';
     default: return null;
   }
@@ -441,6 +465,15 @@ export function createGameScreen(el, ctx) {
   let fieldView = null;          // 守備ビュー（fielding.js）
   let subsMenu = null;           // 采配メニュー（subs.js）
   let logSeen = 0;               // 表示済みの state.log の長さ（交代イベント検出用）
+  let holdStart = 0;             // 矢印を押し始めた時刻（カーソル加速用。全部離したら 0）
+  const talk = createCommentary(Math.random); // 実況
+  let atBatKey = '';             // 実況: 打席の切り替わり検出（打者 id + 攻撃側）
+  let pitchOfAtBat = 0;          // 打席の何球目か
+  let chanceOn = false;          // チャンステーマを流しているか
+  let chanceShownFor = '';       // 「チャンス！」バナーを出した打席
+  let fxSkip = null;             // ホームラン演出のスキップ（タップ/Z）
+  let pitchInfoTimer = 0;
+  let lastResultAt = 0;          // 結果の実況を出した時刻（次の打者紹介を少し待つ）
 
   /** サウンド呼び出し（ctx.sound 未定義・未知の名前でも安全） */
   /** タッチ端末（touch.js が body.touch を付ける）。実況のヒントをタッチ向けにする */
@@ -636,7 +669,7 @@ export function createGameScreen(el, ctx) {
     <div class="stamina-row"><span class="lbl">スタミナ</span><div class="stamina-bar"><i data-ref="p-stamina"></i></div><b data-ref="p-stamina-num">100</b></div>
     <ul class="pitch-list" data-ref="p-pitches"></ul>
     <div class="skills" data-ref="p-skills"></div>
-    <div class="pitch-count"><span>投球数</span><b data-ref="p-count">0</b></div>
+    <div class="pitch-count"><span>投球数</span><b data-ref="p-count">0</b><span>奪三振</span><b data-ref="p-k">0</b><span>失点</span><b data-ref="p-r">0</b></div>
   </aside>
 
   <aside class="panel panel-right" data-ref="batter-panel">
@@ -647,7 +680,7 @@ export function createGameScreen(el, ctx) {
     <div class="today"><div class="today-title">本日の成績</div><div class="today-chips" data-ref="b-today"></div></div>
   </aside>
 
-  ${chibiHTML('chibi-pitcher', teamColor('field'), pitcher?.number ?? '')}
+  ${chibiHTML('chibi-pitcher', teamColor('field'), pitcher?.number ?? '', PITCHER_ARMS)}
   <div data-ref="batter-wrap">${batterHTML(teamColor('bat'), '')}</div>
 
   <div class="zone">${cells.join('')}</div>
@@ -658,20 +691,25 @@ export function createGameScreen(el, ctx) {
   <div class="aim-ring" data-ref="aim-ring"></div>
   <div class="aim" data-ref="aim"></div>
   <div class="windup-ring" data-ref="windup-ring"></div>
-  <div class="shin-flash" data-ref="shin">真芯！</div>
+  <div class="shin-flash" data-ref="shin">カキーン！</div>
+  <div class="impact-flash" data-ref="impact"></div>
+  <div class="pitch-info" data-ref="pitch-info"><b data-ref="pi-type"></b><span data-ref="pi-kmh"></span></div>
+  <div class="chance-banner" data-ref="chance">チャンス！</div>
+  <div class="key-hint" data-ref="key-hint"></div>
   <div class="bat-tags"><span class="tag-steal" data-ref="steal-prompt">盗塁: S</span><span class="tag-bunt" data-ref="bunt-tag">バント</span></div>
   <div class="pitch-dial" data-ref="dial"></div>
   <div class="ball-shadow" data-ref="ball-shadow"></div>
   <div class="ball" data-ref="ball" style="opacity:0"></div>
   <div class="spark" data-ref="spark"></div>
 
-  <div class="ticker"><span class="ticker-tag">実況</span><span class="ticker-text" data-ref="ticker"></span></div>
+  <div class="ticker"><span class="ticker-tag">実況</span><span class="ticker-text"><span class="tk-inner" data-ref="ticker"></span></span></div>
 
   <div class="dpad">
     <button type="button" class="dpad-btn up" data-key="up" aria-label="上">▲</button>
     <button type="button" class="dpad-btn left" data-key="left" aria-label="左">◀</button>
     <button type="button" class="dpad-btn right" data-key="right" aria-label="右">▶</button>
     <button type="button" class="dpad-btn down" data-key="down" aria-label="下">▼</button>
+    <button type="button" class="dpad-btn center" data-key="center" aria-label="カーソルを中心へ（V / Shift）" title="カーソルを中心へ（V / Shift）">◎</button>
   </div>
   <div class="mini-btns" data-ref="mini-btns">
     <button type="button" class="mini-btn" data-key="bunt">バント<small>C</small></button>
@@ -748,6 +786,15 @@ export function createGameScreen(el, ctx) {
       overlaySub: q('[data-ref="overlay-sub"]'),
       xLabel: q('[data-ref="x-label"]'),
       zLabel: q('[data-ref="z-label"]'),
+      impact: q('[data-ref="impact"]'),
+      pitchInfo: q('[data-ref="pitch-info"]'),
+      piType: q('[data-ref="pi-type"]'),
+      piKmh: q('[data-ref="pi-kmh"]'),
+      chance: q('[data-ref="chance"]'),
+      keyHint: q('[data-ref="key-hint"]'),
+      pK: q('[data-ref="p-k"]'),
+      pR: q('[data-ref="p-r"]'),
+      field: q('.game-field'),
     };
   }
 
@@ -760,7 +807,7 @@ export function createGameScreen(el, ctx) {
       on(btn, 'pointercancel', () => handleKeyUp(btn.dataset.key));
       on(btn, 'contextmenu', (e) => e.preventDefault());
     });
-    if (typeof window !== 'undefined') on(window, 'blur', () => held.clear());
+    if (typeof window !== 'undefined') on(window, 'blur', () => { held.clear(); holdStart = 0; });
     on(dom.menu, 'click', (e) => { e.preventDefault(); if (!subsMenu) ctx.go?.('title'); });
     on(dom.subs, 'click', (e) => {
       e.preventDefault();
@@ -782,7 +829,51 @@ export function createGameScreen(el, ctx) {
     const max = Number(pitcher?.pitching?.stamina) || 0;
     const cur = state.stamina?.[pitcher?.id];
     const c = typeof cur === 'number' ? cur : max;
-    return { cur: c, ratio: max > 0 ? clamp(c / max, 0, 1) : 0 };
+    let ratio = max > 0 ? clamp(c / max, 0, 1) : 0;
+    // エンジンが残りスタミナの割合（0..100）を出していればそれを表示に使う
+    const pct = Number(state.staminaPct?.[pitcher?.id]);
+    if (Number.isFinite(pct)) ratio = clamp(pct > 1 ? pct / 100 : pct, 0, 1);
+    return { cur: c, ratio, pct: Math.round(ratio * 100) };
+  }
+
+  /** 能力の表示値（engine.effectiveStats があれば調子などの補正込み） */
+  function shownStats(player) {
+    if (player && typeof engine.effectiveStats === 'function') {
+      try { const e = engine.effectiveStats(state, player); if (e && typeof e === 'object') return { ...player, ...e }; } catch (e) { /* fall back */ }
+    }
+    return player;
+  }
+
+  /** 球種の球速比（ストレート = 1） */
+  const speedRatio = (type) => {
+    const v = Number(PITCH_TYPES[type]?.speed);
+    return v > 0.4 && v <= 1.2 ? v : (PITCH_SPEED[type] ?? 0.9);
+  };
+  /** 球種の基準球速（km/h。スタミナ切れで少し落ちる） */
+  function baseKmh(pitcher, type) {
+    const v = Number(pitcher?.pitching?.velocity) || 140;
+    const st = pitcher ? staminaOf(pitcher) : { cur: 50 };
+    const fat = st.cur < 20 ? (20 - st.cur) / 20 : 0;
+    return v * speedRatio(type) - 4 * fat;
+  }
+  /** 表示用の球速（event.pitch に球速があれば優先、無ければ基準 ±1） */
+  function pitchKmh(pitcher, type, ev) {
+    const k = Number(ev?.pitch?.kmh ?? ev?.pitch?.speed ?? ev?.pitch?.velocity);
+    if (k > 60 && k < 200) return Math.round(k);
+    return Math.round(baseKmh(pitcher, type) + (Math.random() * 3 - 1.5));
+  }
+  /** 投球の到達時間（ms）。engine.pitchFlightMs 優先、無ければ球速から */
+  function flightMsFor(pitcher, type) {
+    const dname = DIFFICULTY[ctx.settings?.difficulty] ? ctx.settings.difficulty : 'normal';
+    if (typeof engine.pitchFlightMs === 'function') {
+      try {
+        const v = Number(engine.pitchFlightMs(pitcher, type, dname, { state }));
+        if (Number.isFinite(v) && v >= 200 && v <= 3000) return Math.round(v);
+      } catch (e) { /* fall back */ }
+    }
+    if (!pitcher?.pitching?.velocity) return diff.flight;
+    const kmh = Math.max(90, baseKmh(pitcher, type));
+    return Math.round(clamp(FLIGHT_BASE_MS * Math.pow(FLIGHT_REF_KMH / kmh, FLIGHT_EXP) * (diff.speedK || 1), 360, 1400));
   }
 
   function render() {
@@ -807,9 +898,14 @@ export function createGameScreen(el, ctx) {
       dom.pMeta.textContent = `${pitcher.throws}投`;
       dom.pVelo.textContent = pitcher.pitching?.velocity ?? '-';
       const st = staminaOf(pitcher);
-      dom.pStamina.style.width = `${Math.round(st.ratio * 100)}%`;
+      dom.pStamina.style.width = `${st.pct}%`;
       dom.pStamina.classList.toggle('low', st.ratio < 0.3);
-      if (dom.pStaminaNum) dom.pStaminaNum.textContent = Math.round(st.cur);
+      dom.pStamina.classList.toggle('mid', st.ratio >= 0.3 && st.ratio < 0.6);
+      if (dom.pStaminaNum) dom.pStaminaNum.textContent = st.pct;
+      const pst = state.stats?.[pitcher.id];
+      if (dom.pK) dom.pK.textContent = pst?.k ?? 0;
+      if (dom.pR) dom.pR.textContent = pst?.er ?? 0;
+      if (dom.pitcherChibi) dom.pitcherChibi.classList.toggle('lefty', pitcher.throws === '左');
       const list = userPitches();
       dom.pPitches.innerHTML = list.map((p, i) => `<li class="pitch-item${MANUAL_PITCHING && userPitching && i === pitchIdx ? ' selected' : ''}" data-type="${esc(p.type)}" title="${esc(p.name)}${p.type !== 'fastball' ? ` 変化量${esc(p.level ?? 0)}` : ''}"><span><em class="pi-dir">${p.dir === '●' ? '' : esc(p.dir)}</em>${esc(p.name)}</span>${p.type !== 'fastball' ? levelBars(p.level, 'pi-lv') : ''}</li>`).join('');
       if (dom.pCond) dom.pCond.innerHTML = condHTML(pitcher);
@@ -824,7 +920,8 @@ export function createGameScreen(el, ctx) {
 
     // batter panel
     const bSide = battingSide();
-    const batter = engine.getBatter(state);
+    const batter0 = engine.getBatter(state);
+    const batter = batter0 ? shownStats(batter0) : batter0;
     if (batter) {
       const view = engine.lineupView(state, bSide).find((l) => l.id === batter.id);
       const order = view ? view.slot + 1 : ((state.batterIndex?.[bSide] ?? 0) % 9) + 1;
@@ -884,7 +981,27 @@ export function createGameScreen(el, ctx) {
     renderDial();
     renderControls();
     if (dom.subs) dom.subs.classList.toggle('is-disabled', !canOpenSubs() && !subsMenu);
-    dom.ticker.textContent = tickerText;
+    if (dom.ticker.textContent !== tickerText) { dom.ticker.textContent = tickerText; fitTicker(); }
+    if (dom.keyHint) {
+      const showHint = batting && (phase === 'ready' || phase === 'pitching') && !subsMenu;
+      dom.keyHint.classList.toggle('show', showHint);
+      if (showHint) { const h = readyHint(); if (dom.keyHint.textContent !== h) dom.keyHint.textContent = h; }
+    }
+  }
+
+  /** 実況の文が枠より長いときは、少し待ってから左へ流す */
+  function fitTicker() {
+    const n = dom.ticker;
+    const box = n?.parentElement;
+    if (!n || !box) return;
+    n.classList.remove('scroll');
+    const over = n.scrollWidth - box.clientWidth;
+    if (over > 4) {
+      n.style.setProperty('--tk-shift', `${-(over + 12)}px`);
+      n.style.setProperty('--tk-dur', `${clamp(over / 70, 1.2, 6).toFixed(2)}s`);
+      void n.offsetWidth;
+      n.classList.add('scroll');
+    }
   }
 
   /** 球種パネル（パワプロの方向図）。中央 = ストレート、各球種は変化方向のマスへ */
@@ -971,6 +1088,25 @@ export function createGameScreen(el, ctx) {
     return len ? [vx / len, vy / len] : [0, 0];
   }
 
+  /** 押し続けている時間に応じたカーソル速度（セル/秒）。設定「カーソル速度」1〜5 で倍率 */
+  function cursorSpeedNow() {
+    const lv = clamp(Math.round(Number(ctx.settings?.cursorSpeed) || 3), 1, 5);
+    const k = CURSOR_SPEED_K[lv - 1];
+    const ms = holdStart ? now() - holdStart : 0;
+    const ramp = clamp((ms - CURSOR_HOLD_MS) / CURSOR_RAMP_MS, 0, 1);
+    return (CURSOR_V0 + (CURSOR_VMAX - CURSOR_V0) * ramp * ramp * (3 - 2 * ramp)) * k;
+  }
+  const heldArrows = () => [...held].some((k) => ARROW_VEC[k]);
+
+  /** ミートカーソルを中心へ戻す */
+  function recenterCursor() {
+    if (!userBatting() || !((phase === 'ready' || phase === 'pitching') && !flight?.swung)) return;
+    cursor = { x: 0, y: 0 };
+    holdStart = heldArrows() ? now() : 0;
+    renderControls();
+    restartAnim(dom.cursor, 'recenter');
+  }
+
   /** カーソル移動のフレームループ（矢印を押している間なめらかに動く） */
   function loop(ts) {
     if (destroyed) return;
@@ -980,8 +1116,9 @@ export function createGameScreen(el, ctx) {
       const [vx, vy] = heldVector();
       if (userBatting()) {
         if ((phase === 'ready' || phase === 'pitching') && !flight?.swung) {
-          cursor.x = clamp(cursor.x + vx * CURSOR_SPEED * dt, -CURSOR_LIMIT, CURSOR_LIMIT);
-          cursor.y = clamp(cursor.y + vy * CURSOR_SPEED * dt, -CURSOR_LIMIT, CURSOR_LIMIT);
+          const v = cursorSpeedNow();
+          cursor.x = clamp(cursor.x + vx * v * dt, -CURSOR_LIMIT, CURSOR_LIMIT);
+          cursor.y = clamp(cursor.y + vy * v * dt, -CURSOR_LIMIT, CURSOR_LIMIT);
         }
       } else if (phase === 'ready' && pitchStep === 'aim') {
         aim.x = clamp(aim.x + vx * AIM_SPEED * dt, -AIM_LIMIT, AIM_LIMIT);
@@ -1095,7 +1232,6 @@ export function createGameScreen(el, ctx) {
       else swingPref = 'meet';
     }
     if (steal) clearSteal();
-    if (/^(矢印|←→↑↓|タップ|CPUが投げて)/.test(tickerText)) tickerText = readyHint();
     // 自分で投げない試合形式: 疲れたユーザー投手は自動で交代（CPU と同じ基準）
     if (autoManageUserPitcher()) {
       phase = 'resolve';
@@ -1103,6 +1239,22 @@ export function createGameScreen(el, ctx) {
       showSubs(takeNewSubs(), () => enterReady());
       return;
     }
+    // 打席の切り替わり: 打者紹介の実況（結果の実況を少し読ませてから）
+    const side = battingSide();
+    const key = `${side}:${state.batterIndex?.[side] ?? ''}:${engine.getBatter(state)?.id ?? ''}`;
+    const newAtBat = key !== atBatKey;
+    if (newAtBat) {
+      atBatKey = key;
+      pitchOfAtBat = 0;
+      let intro = null;
+      try { intro = talk.atBatStart(talkCtx()); } catch (e) { console.warn(e); }
+      if (intro) {
+        const wait = Math.max(0, 1500 - (now() - lastResultAt));
+        if (wait < 120) tickerText = intro;
+        else later(() => { if (atBatKey === key && !fxSkip) { tickerText = intro; render(); } }, wait);
+      }
+    }
+    updateChance(newAtBat);
     render();
     scheduleAutoPitch();
   }
@@ -1115,6 +1267,8 @@ export function createGameScreen(el, ctx) {
   /** ユーザー投手のスタミナ切れ → 救援投手へ自動交代（engine.changePitcher の既定 = CPU と同じ選択）。交代したら true */
   function autoManageUserPitcher() {
     if (!autoFielding() || state.pending || state.over || engine.isGameOver(state) || typeof engine.changePitcher !== 'function') return false;
+    // エンジンが継投を管理する（autoUserPitcher + cpuManage）ときは二重に交代させない
+    if (state.autoUserPitcher && typeof engine.cpuManage === 'function') return false;
     const side = userSide();
     const cur = engine.getPitcher(state);
     if (!cur || staminaOf(cur).cur >= USER_RELIEF_STAMINA) return false;
@@ -1215,13 +1369,31 @@ export function createGameScreen(el, ctx) {
     if (dom.landMark) dom.landMark.classList.remove('show');
   }
 
-  function startFlight(pitch, finalLoc, onArrive) {
+  /**
+   * 投手の投球モーション（セット → 足を上げる → 腕を振る）。毎回同じ長さ ms のあと release() でリリース。
+   * 打者は「いち、にの、さん」でタイミングを取れる
+   */
+  function pitcherWindup(ms, release) {
+    const n = dom.pitcherChibi;
+    if (n) {
+      n.classList.remove('follow');
+      n.style.setProperty('--wu', `${ms}ms`);
+      restartAnim(n, 'windup');
+    }
+    if (dom.root) dom.root.dataset.windup = '1';
+    later(() => {
+      if (dom.root) delete dom.root.dataset.windup;
+      if (n) { n.classList.remove('windup'); restartAnim(n, 'follow'); later(() => n.classList.remove('follow'), 320); }
+      release();
+    }, ms);
+  }
+
+  function startFlight(pitch, finalLoc, ms, onArrive) {
     const start = now();
-    const ms = diff.flight;
     const aimLoc = aimOf(pitch);
-    flight = { pitch, start, arrival: start + ms, aimLoc, finalLoc, swung: false, batInput: null, take: false, onArrive, done: false };
+    flight = { pitch, start, arrival: start + ms, ms, aimLoc, finalLoc, swung: false, batInput: null, take: false, onArrive, done: false };
     play('pitch');
-    if (dom.ball) { dom.ball.classList.remove('flying'); dom.ball.style.opacity = '1'; }
+    if (dom.ball) { dom.ball.classList.remove('flying'); dom.ball.style.opacity = '1'; dom.ball.dataset.flightMs = String(ms); }
     if (dom.ballShadow) { dom.ballShadow.classList.add('pitch'); dom.ballShadow.style.opacity = '0'; }
     const ghostOn = !!diff.ghost && userBatting();
     if (dom.ghost) {
@@ -1287,10 +1459,25 @@ export function createGameScreen(el, ctx) {
         if (validLoc(loc)) { pitch = { ...pitch, loc }; finalLoc = { x: Number(loc.x), y: Number(loc.y) }; }
       } catch (e) { /* fall back */ }
     }
-    tickerText = `${engine.getPitcher(state)?.name ?? '投手'}、投げた！`;
-    if (steal) { showStealRunner('run'); tickerText += ' ランナー走った！'; }
+    const pitcher = engine.getPitcher(state);
+    const ms = flightMsFor(pitcher, pitch.type);
+    const kmh = pitchKmh(pitcher, pitch.type);
+    pitchOfAtBat++;
+    let line = null;
+    try { line = talk.prePitch(talkCtx({ firstPitch: pitchOfAtBat === 1 })); } catch (e) { console.warn(e); }
+    if (line) tickerText = line;
     render();
-    startFlight(pitch, finalLoc || predictLoc(pitch), () => {
+    const stealing = !!steal;
+    pitcherWindup(WINDUP_PITCH_MS, () => {
+      if (phase !== 'pitching' || destroyed) return;
+      if (stealing && steal) { showStealRunner('run'); tickerText = `${tickerText ? `${tickerText} ` : ''}ランナー走った！`; render(); }
+      releaseCpuPitch(pitch, finalLoc, ms, kmh, take);
+    });
+  }
+
+  /** CPU 投手のリリース → 投球アニメ（ユーザー打撃） */
+  function releaseCpuPitch(pitch, finalLoc, ms, kmh, take) {
+    startFlight(pitch, finalLoc || predictLoc(pitch), ms, () => {
       // 到着後 TAKE_GRACE_MS までスイングを受け付ける
       later(() => {
         if (phase !== 'pitching' || !flight) return;
@@ -1306,6 +1493,7 @@ export function createGameScreen(el, ctx) {
       }, TAKE_GRACE_MS);
     });
     flight.take = !!take;
+    flight.kmh = kmh;
   }
 
   /** スイング。at = 入力の時刻（タップの指が触れた時刻。省略時は今） */
@@ -1354,7 +1542,7 @@ export function createGameScreen(el, ctx) {
     else if (batInput) {
       later(() => { if (phase === 'pitching') { play('swing'); swingAnim(batInput.mode); } }, Math.max(0, diff.flight - SWING_CONTACT_MS));
     }
-    startFlight(pitchInput, loc, () => handleContact(prev, res));
+    startFlight(pitchInput, loc, diff.flight, () => handleContact(prev, res));
   }
 
   /** CPU がユーザーの投手で投げる（自分で投げない試合形式）。CPU 打者は chooseSwing でスイング */
@@ -1370,14 +1558,23 @@ export function createGameScreen(el, ctx) {
     const res = engine.pitchContact(state, pitchInput, batInput, rng);
     const evLoc = res?.event?.pitch?.loc ?? res?.event?.location;
     const loc = validLoc(evLoc) ? { x: Number(evLoc.x), y: Number(evLoc.y) } : predictLoc(pitchInput);
-    const name = PITCH_TYPES[pitchInput.type]?.name || '';
-    tickerText = `${engine.getPitcher(prev)?.name ?? '投手'}、${name ? `${name}を` : ''}投げた！`;
+    const pitcher = engine.getPitcher(prev);
+    const ms = flightMsFor(pitcher, pitchInput.type);
+    const kmh = pitchKmh(pitcher, pitchInput.type, res?.event);
+    pitchOfAtBat++;
+    let line = null;
+    try { line = talk.prePitch(talkCtx({ firstPitch: pitchOfAtBat === 1 })); } catch (e) { console.warn(e); }
+    if (line) tickerText = line;
     render();
     if (batInput?.mode === 'bunt') setBuntPose(true);
-    else if (batInput) {
-      later(() => { if (phase === 'pitching') { play('swing'); swingAnim(batInput.mode); } }, Math.max(0, diff.flight - SWING_CONTACT_MS));
-    }
-    startFlight(pitchInput, loc, () => handleContact(prev, res));
+    pitcherWindup(WINDUP_AUTO_MS, () => {
+      if (phase !== 'pitching' || destroyed) return;
+      if (batInput && batInput.mode !== 'bunt') {
+        later(() => { if (phase === 'pitching') { play('swing'); swingAnim(batInput.mode); } }, Math.max(0, ms - SWING_CONTACT_MS));
+      }
+      startFlight(pitchInput, loc, ms, () => handleContact(prev, res));
+      flight.kmh = kmh;
+    });
   }
 
   function finishPitch(pitch, batInput) {
@@ -1396,6 +1593,7 @@ export function createGameScreen(el, ctx) {
   /** pitchContact の結果を振り分け: 打球（本塁打以外）は守備ビューへ、それ以外は即結果表示 */
   function handleContact(prev, res) {
     if (destroyed) return;
+    showPitchInfo(prev, res?.event);
     if (res?.ball && !res.ball.isHomeRun && res.state?.pending) {
       if (MANUAL_FIELDING) startInPlay(prev, res);
       else autoInPlay(prev, res);
@@ -1416,16 +1614,19 @@ export function createGameScreen(el, ctx) {
     if (!out) { console.error('resolveBattedBall failed'); out = { state: { ...res.state, pending: null }, event: { kind: 'out', text: 'アウト', runs: 0 } }; }
     state = res.state;
     if (dom.ghost) { dom.ghost.classList.remove('show'); dom.ghost.style.opacity = '0'; }
-    play('hit');
     const c = wasUserBatting && dom.cursor
       ? { x: ZONE_CX + cursor.x * CELL, y: ZONE_CY + cursor.y * CELL }
       : ballCenter();
-    sparkAt(c.x, c.y);
-    contactFx(res.event, c.x, c.y);
-    tickerText = `${res.event?.contactTier === 'shin2' ? '真芯でとらえた！ ' : ''}${batter?.name ?? ''}、${res.event?.bunt ? 'バント！' : '打った！'}`;
+    const stop = contactFeedback(res.event, ball, c.x, c.y);
+    let line = null;
+    try { line = talk.contact(talkCtx({ event: res.event, ball }, prev)); } catch (e) { console.warn(e); }
+    tickerText = line || `${batter?.name ?? ''}、${res.event?.bunt ? 'バント！' : '打った！'}`;
     render();
-    const ms = animateInPlay(ball, out.event, c);
-    later(() => applyResult(prev, out, { fromField: true, wasUserBatting }), ms);
+    const go = () => {
+      const ms = animateInPlay(ball, out.event, c);
+      later(() => applyResult(prev, out, { fromField: true, wasUserBatting }), ms);
+    };
+    if (stop) later(go, stop); else go();
   }
 
   /** フィールド座標（m。本塁 0,0、+y センター、+x 一塁側）→ 試合画面（捕手視点）のステージ座標 */
@@ -1496,13 +1697,11 @@ export function createGameScreen(el, ctx) {
     const wasUserBatting = battingSide(prev) === (prev.userSide || 'away');
     const batter = engine.getBatter(prev);
     if (dom.ghost) { dom.ghost.classList.remove('show'); dom.ghost.style.opacity = '0'; }
-    play('hit');
     const c = wasUserBatting && dom.cursor
       ? { x: ZONE_CX + cursor.x * CELL, y: ZONE_CY + cursor.y * CELL }
       : ballCenter();
-    sparkAt(c.x, c.y);
-    contactFx(res.event, c.x, c.y);
-    tickerText = `${res.event?.contactTier === 'shin2' ? '真芯でとらえた！ ' : ''}${batter?.name ?? ''}、${res.event?.bunt ? 'バント！' : '打った！'}`;
+    contactFeedback(res.event, res.ball, c.x, c.y);
+    tickerText = `${batter?.name ?? ''}、${res.event?.bunt ? 'バント！' : '打った！'}`;
     render();
     later(() => openFieldView(prev, res.ball, wasUserBatting), FIELD_OPEN_MS);
   }
@@ -1576,17 +1775,43 @@ export function createGameScreen(el, ctx) {
     node.classList.add(cls);
   }
 
-  /** 真芯（event.contactTier === 'shin2'）の演出: '真芯！' フラッシュ + 大きな火花 + 打球音 2 回 */
-  function contactFx(event, x, y) {
-    if (event?.contactTier !== 'shin2') return;
-    if (dom.spark) { dom.spark.classList.add('big'); later(() => dom.spark?.classList.remove('big'), 450); }
-    later(() => play('hit'), 70);
+  /**
+   * 当たりの質ごとの手応え: 打球音・擬音テロップ・火花。真芯はヒットストップ（全体を一瞬止める）と白フラッシュ。
+   * 打球を動かし始めるまでの待ち（ms、ヒットストップ分）を返す
+   */
+  function contactFeedback(event, ball, x, y) {
+    const tier = event?.contactTier;
+    const foul = event?.kind === 'foul' || !!ball?.isFoul;
+    let level, word, snd;
+    if (foul) { level = 'foul'; word = 'ファウル'; snd = 'hit_foul'; }
+    else if (tier === 'shin2') { level = 'core'; word = 'カキーン！'; snd = 'hit_core'; }
+    else if (tier === 'shin') { level = 'good'; word = 'カキン！'; snd = 'hit_good'; }
+    else { level = 'weak'; word = (ball?.type === 'grounder' || event?.bunt) ? 'ボテッ' : 'コン'; snd = 'hit_weak'; }
+    play(snd);
+    if (dom.spark) {
+      dom.spark.classList.remove('big', 'mid', 'small');
+      dom.spark.classList.add(level === 'core' ? 'big' : level === 'good' ? 'mid' : 'small');
+    }
+    sparkAt(x, y);
     if (dom.shin) {
+      dom.shin.textContent = word;
+      dom.shin.className = `shin-flash tier-${level}`;
       dom.shin.style.left = `${x}px`;
       dom.shin.style.top = `${y}px`;
       restartAnim(dom.shin, 'go');
     }
+    if (level !== 'core') return 0;
+    // 真芯: ヒットストップ（CSS アニメ・スイングを HITSTOP_MS だけ止める）+ 白フラッシュ
+    restartAnim(dom.impact, 'go');
+    const running = swingAnims.filter((a) => a.playState === 'running');
+    running.forEach((a) => { try { a.pause(); } catch (e) { /* ignore */ } });
+    dom.root?.classList.add('hitstop');
+    later(() => {
+      dom.root?.classList.remove('hitstop');
+      running.forEach((a) => { try { a.play(); } catch (e) { /* ignore */ } });
+    }, HITSTOP_MS);
     duckMusic(900);
+    return HITSTOP_MS;
   }
 
   function sparkAt(x, y) {
@@ -1643,20 +1868,20 @@ export function createGameScreen(el, ctx) {
     if (isBigPlay(event)) duckMusic(kind === 'hr' ? 3200 : 2000);
     if (CONTACT_KINDS.includes(kind)) {
       if (!fromField) {
-        play('hit');
-        if (kind === 'foul') play('foul');
         const c = wasUserBatting && dom.cursor
           ? { x: ZONE_CX + cursor.x * CELL, y: ZONE_CY + cursor.y * CELL }
           : ballCenter();
-        sparkAt(c.x, c.y);
-        contactFx(event, c.x, c.y);
-        animateBattedBall(event);
+        const stop = contactFeedback(event, event.ball, c.x, c.y);
+        if (kind === 'foul') later(() => play('foul'), 200);
+        if (stop) later(() => animateBattedBall(event), stop); else animateBattedBall(event);
       }
-      if (kind === 'hr') play('homerun');
+      if (kind === 'hr' && fromField) play('homerun');
       if (OUT_KINDS.includes(kind)) later(() => play('out'), fromField ? 60 : 350);
       if (kind === 'hit' || kind === 'hr' || kind === 'error' || event.runs > 0) later(() => play('cheer'), fromField ? 80 : 300);
       return;
     }
+    if (kind === 'hbp') { play('hbp'); return; }
+    if (kind === 'ibb') { play('ball'); return; }
     play('catch');
     if (event.swing && wasUserBatting) restartAnim(dom.cursor, 'miss');
     if (kind === 'ball' || kind === 'walk') play('ball');
@@ -1680,17 +1905,35 @@ export function createGameScreen(el, ctx) {
     const event = res?.event || { kind: 'ball', text: '' };
     const batterBefore = engine.getBatter(prev);
     const wasUserBatting = opts.wasUserBatting ?? (battingSide(prev) === (prev.userSide || 'away'));
+    const prevSide = battingSide(prev);
+    const prevLead = leadOf(prev, prevSide);
     state = res?.state || state;
     const chip = chipFor(event);
     if (chip && batterBefore) (atBatChips[batterBefore.id] ||= []).push(chip);
-    tickerText = event.text || overlayFor(event);
+    // 実況: エンジンの事実（event.text）＋ 結果のあとの一言
+    let line = null;
+    if (chip || event.kind === 'hbp' || event.kind === 'ibb') {
+      try {
+        const pid = engine.getPitcher(prev)?.id;
+        line = talk.result(talkCtx({
+          event, prevLead, lead: leadOf(state, prevSide), over: engine.isGameOver(state),
+          halfChanged: battingSide(state) !== prevSide, stats: state.stats?.[batterBefore?.id] || {},
+          pitcherK: state.stats?.[pid]?.k ?? 0, outs: state.outs ?? 0,
+        }, prev));
+      } catch (e) { console.warn(e); }
+    }
+    const fact = event.text || overlayFor(event);
+    tickerText = line ? `${fact ? `${fact}　` : ''}${line}` : fact;
+    if (event.wildPitch && !/暴投/.test(tickerText)) tickerText += `${tickerText ? '　' : ''}暴投！ランナー進塁`;
+    lastResultAt = now();
     const subs = takeNewSubs();
 
     render();
     feedback(event, wasUserBatting, !!opts.fromField);
+    if (wasUserBatting && ['hit', 'walk', 'hbp', 'ibb', 'error'].includes(event.kind)) later(() => play('onbase'), 420);
     const sub = event.runs ? `${event.runs}点！` : '';
     const big = overlayFor(event);
-    const cls = event.kind === 'hr' ? 'is-hr' : ['double_play', 'error'].includes(event.kind) ? 'is-big' : STEAL_KINDS.includes(event.kind) ? stealCls(event) : '';
+    const cls = event.kind === 'hr' ? 'is-hr' : ['double_play', 'error'].includes(event.kind) ? 'is-big' : event.kind === 'hbp' ? 'is-hbp' : event.kind === 'ibb' ? 'is-ibb' : STEAL_KINDS.includes(event.kind) ? stealCls(event) : '';
     const ms = event.kind === 'hr' ? RESULT_MS + 600 : RESULT_MS;
     const sOk = stealOutcome(event);
     if (sOk !== null && steal) { showStealRunner(sOk ? 'safe' : 'out'); steal.done = true; dom.stealPrompt?.classList.remove('show'); }
@@ -1699,7 +1942,103 @@ export function createGameScreen(el, ctx) {
       ? () => showOverlay(sOk ? '盗塁成功！' : 'アウト！（盗塁失敗）', stealSub(event), RESULT_MS, () => showSubs(subs, afterResult), sOk ? 'is-steal' : 'is-steal-out')
       : () => showSubs(subs, afterResult);
     if (sOk !== null) later(() => play(sOk ? 'cheer' : 'out'), 250);
+    if (event.kind === 'hr' && !opts.fromField) { homeRunFx(event, sub, then); return; }
     showOverlay(big, sub || (STEAL_KINDS.includes(event.kind) ? stealSub(event) : ''), ms, then, cls);
+  }
+
+  /** 攻撃側 side から見た点差 */
+  function leadOf(s, side) {
+    const sc = engine.summary(s)?.score || { away: 0, home: 0 };
+    const other = side === 'away' ? 'home' : 'away';
+    return (Number(sc[side]) || 0) - (Number(sc[other]) || 0);
+  }
+
+  /** 実況用の状況（s の打者・投手・カウント）。extra で上書き */
+  function talkCtx(extra = {}, s = state) {
+    const side = battingSide(s);
+    const batter = engine.getBatter(s);
+    let view = null;
+    try { view = batter ? engine.lineupView(s, side).find((l) => l.id === batter.id) : null; } catch (e) { /* ignore */ }
+    const pos = view?.pos || batter?.pos || '';
+    const pitcher = engine.getPitcher(s);
+    return {
+      name: batter?.name, order: view ? view.slot + 1 : null, pos: POS_NAMES[pos] || pos,
+      stats: s.stats?.[batter?.id] || {}, pa: (atBatChips[batter?.id]?.length || 0) + 1,
+      balls: s.balls ?? 0, strikes: s.strikes ?? 0, outs: s.outs ?? 0, bases: (s.bases || []).map(Boolean),
+      inning: s.inning, half: s.half, innings: s.innings ?? ctx.settings?.innings ?? 9, lead: leadOf(s, side),
+      pitcherName: pitcher?.name, pitcherK: s.stats?.[pitcher?.id]?.k ?? 0, userBatting: side === (s.userSide || 'away'),
+      ...extra,
+    };
+  }
+
+  /** 投球後の「球種 球速」テロップ（ゾーンの右下） */
+  function showPitchInfo(prev, ev) {
+    const type = ev?.pitch?.type;
+    if (!type || !dom.pitchInfo) return;
+    const evK = Number(ev.pitch.kmh ?? ev.pitch.speed);
+    const kmh = evK > 60 && evK < 200 ? Math.round(evK)
+      : (flight?.kmh && flight.pitch?.type === type ? flight.kmh : pitchKmh(engine.getPitcher(prev), type, ev));
+    dom.piType.textContent = PITCH_TYPES[type]?.name || type;
+    dom.piKmh.textContent = `${kmh}km/h`;
+    restartAnim(dom.pitchInfo, 'show');
+    cancel(pitchInfoTimer);
+    pitchInfoTimer = later(() => { pitchInfoTimer = 0; dom.pitchInfo?.classList.remove('show'); }, PITCH_INFO_MS);
+  }
+
+  /** ホームランの飛距離（m）。ball.distance が無ければ打者のパワーから推定 */
+  function hrDistance(event) {
+    const d = Number(event?.ball?.distance ?? event?.distance);
+    if (d > 60 && d < 220) return Math.round(d);
+    const pw = Number(engine.getBatter(state)?.power) || 60;
+    return Math.round(clamp(102 + (pw - 50) * 0.5 + Math.random() * 22, 98, 160));
+  }
+
+  /**
+   * ホームラン演出（約 3 秒・タップ/Z でスキップ）: バット投げ → カメラがスタンドへ寄る → 歓声とファンファーレ → 飛距離テロップ
+   */
+  function homeRunFx(event, sub, then) {
+    const root = dom.root;
+    const dist = hrDistance(event);
+    const ids = [];
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      fxSkip = null;
+      ids.forEach(cancel);
+      root?.classList.remove('hr-cam');
+      dom.batterChibi?.classList.remove('bat-flip');
+      if (dom.overlay) dom.overlay.className = 'overlay';
+      duckMusic(300);
+      then();
+    };
+    fxSkip = finish;
+    duckMusic(HR_FX_MS + 600);
+    play('crowd');
+    ids.push(later(() => restartAnim(dom.batterChibi, 'bat-flip'), 400));
+    ids.push(later(() => { root?.classList.add('hr-cam'); play('fanfare'); }, 700));
+    ids.push(later(() => {
+      dom.overlayBig.textContent = event.ball && event.ball.isHomeRun === false ? 'ランニングホームラン！' : 'ホームラン！';
+      dom.overlaySub.textContent = `飛距離 ${dist}m${sub ? `　${sub}` : ''}`;
+      dom.overlay.className = 'overlay show is-hr hr-caption';
+    }, 1000));
+    ids.push(later(() => play('cheer'), 1500));
+    ids.push(later(finish, HR_FX_MS));
+  }
+
+  /** チャンス（自チームの攻撃で二塁・三塁に走者）: バナーとチャンステーマ。打席が終わって解消したら通常の曲へ */
+  function updateChance(newAtBat) {
+    const b = state.bases || [];
+    const batting = userBatting();
+    const chance = batting && !!(b[1] || b[2]) && !engine.isGameOver(state);
+    if (chance && !chanceOn) { chanceOn = true; try { ctx.music?.play?.('chance'); } catch (e) { /* ignore */ } }
+    else if (!chance && chanceOn && (newAtBat || !batting)) { chanceOn = false; try { ctx.music?.play?.('game'); } catch (e) { /* ignore */ } }
+    if (chance && chanceShownFor !== atBatKey) {
+      chanceShownFor = atBatKey;
+      const key = atBatKey;
+      // 結果テロップが消えてから出す
+      later(() => { if (atBatKey === key && userBatting()) { restartAnim(dom.chance, 'go'); play('chance'); } }, 250);
+    }
   }
   const stealCls = (event) => (stealOutcome(event) ? 'is-steal' : 'is-steal-out');
   const stealSub = (event) => {
@@ -1742,7 +2081,7 @@ export function createGameScreen(el, ctx) {
       render();
       const team = state.teams[batting];
       showOverlay(`${inningLabel()} ${team?.name ?? ''}の攻撃`, '', CHANGE_MS, () => {
-        tickerText = readyHint();
+        lastResultAt = 0;
         enterReady();
       });
       return;
@@ -1859,6 +2198,7 @@ export function createGameScreen(el, ctx) {
   // ---------- input ----------
   function handleKey(key) {
     if (destroyed || !state) return;
+    if (fxSkip && ['z', 'x', 'enter', 'swing'].includes(key)) { fxSkip(); return; } // 演出のスキップ
     if (key === 'swing' && (subsMenu || fieldView || !userBatting())) key = 'z'; // タッチの大ボタン: 打席以外は Z と同じ
     if (subsMenu) { subsMenu.handleKey(key); return; }
     if (fieldView) { fieldView.handleKey(key, true); return; }
@@ -1866,7 +2206,11 @@ export function createGameScreen(el, ctx) {
     if (key === 'esc') { if (canOpenSubs()) openSubs(); return; }
     const isArrow = !!ARROW_VEC[key];
     const fresh = isArrow && !held.has(key); // キーリピートは移動の継続としてのみ扱う
-    if (isArrow) held.add(key);
+    if (isArrow) {
+      if (!heldArrows()) holdStart = now(); // 押し始め → ゆっくりから加速
+      held.add(key);
+    }
+    if (key === 'center') { recenterCursor(); return; }
     const batting = userBatting();
     if (batting) {
       if (isArrow) {
@@ -1896,7 +2240,7 @@ export function createGameScreen(el, ctx) {
       }
       if (key === 'bunt') {
         if (phase === 'ready') setBuntStance(!buntStance);
-        else if (phase === 'pitching' && flight && !flight.swung && !flight.take) {
+        else if (phase === 'pitching' && !flight?.swung && !flight?.take) {
           if (!buntStance) setBuntStance(true);
           else userSwing('bunt');
         }
@@ -1943,6 +2287,7 @@ export function createGameScreen(el, ctx) {
     if (destroyed) return;
     if (key === 'swing') key = 'z';
     held.delete(key);
+    if (!heldArrows()) holdStart = 0; // 離したら即停止（次は再びゆっくりから）
     if (fieldView && !subsMenu) fieldView.handleKey(key, false);
   }
 
@@ -1994,7 +2339,7 @@ export function createGameScreen(el, ctx) {
     if (phase !== 'ready' && phase !== 'pitching') return false;
     if (flight?.swung) return false;
     if (mode === 'bunt') {
-      if (phase === 'pitching' && (!flight || flight.take)) return false;
+      if (phase === 'pitching' && flight?.take) return false;
       swingPref = 'bunt';
       prefBatterId = engine.getBatter(state)?.id ?? null;
       if (!buntStance) setBuntStance(true);
@@ -2014,6 +2359,7 @@ export function createGameScreen(el, ctx) {
 
   /** ゾーン付近に指が触れた（ステージ座標）。タップとして扱う場所なら true。投球中は見送り判定を少し待つ */
   function touchZoneDown(sx, sy) {
+    if (fxSkip && !destroyed) { fxSkip(); return false; } // ホームラン演出をタップでスキップ
     if (destroyed || !state || subsMenu || fieldView || !Number.isFinite(sx) || !Number.isFinite(sy)) return false;
     const p = stageToCell(sx, sy);
     if (userBatting()) {
@@ -2131,6 +2477,13 @@ export function createGameScreen(el, ctx) {
     prefBatterId = null;
     steal = null;
     held.clear();
+    holdStart = 0;
+    talk.reset();
+    atBatKey = '';
+    pitchOfAtBat = 0;
+    chanceOn = false;
+    chanceShownFor = '';
+    fxSkip = null;
     el.innerHTML = template();
     cacheDom();
     bindInputs();
@@ -2140,7 +2493,7 @@ export function createGameScreen(el, ctx) {
     render();
     phase = 'change';
     showOverlay(`${inningLabel()} ${state.teams[lastBatting]?.name ?? ''}の攻撃`, 'プレイボール！', CHANGE_MS, () => {
-      tickerText = readyHint();
+      lastResultAt = 0;
       enterReady();
     });
   }
@@ -2164,6 +2517,7 @@ export function createGameScreen(el, ctx) {
     listeners.forEach(([n, t, f, o]) => n.removeEventListener(t, f, o));
     listeners.length = 0;
     flight = null;
+    fxSkip = null;
   }
 
   return { start, handleKey, handleKeyUp, isCapturingEsc, dragCursor, destroy, touchInfo, setSwingMode, touchZoneDown, touchZoneTap, touchZoneCancel, tapPitch };

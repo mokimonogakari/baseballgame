@@ -68,6 +68,21 @@ const TRACKS = {
       ['G', 'D6:2 B5:2 G5:2 B5:2 D6:6 R:2'],
     ],
   },
+  // チャンステーマ（オリジナル）: 速めのテンポで同じ動機を上げていく
+  chance: {
+    bpm: 156, level: 0.62, loopStart: 0, drums: 'title', arp: 0.05, stab: 0.06,
+    lead: { wave: 'brass', gain: 0.13, vib: 7 }, bassWave: 'triangle',
+    bars: [
+      ['Am', 'A5:2 A5:2 C6:2 E6:2 R:2 E6:2 D6:2 C6:2'],
+      ['F', 'C6:2 C6:2 A5:2 F5:2 A5:4 C6:4'],
+      ['G', 'B5:2 B5:2 D6:2 G6:2 R:2 G6:2 F6:2 D6:2'],
+      ['E', 'E6:4 B5:4 G#5:4 B5:4'],
+      ['Am', 'C6:2 E6:2 A6:4 G6:2 E6:2 C6:4'],
+      ['F', 'A5:2 C6:2 F6:4 E6:2 C6:2 A5:4'],
+      ['Dm', 'D6:2 F6:2 A6:2 F6:2 G6:2 E6:2 D6:4'],
+      ['E', 'E6:2 G#6:2 B6:4 E6:4 R:4'],
+    ],
+  },
   result_win: {
     bpm: 120, level: 0.8, loopStart: 4, drums: 'none', arp: 0.04,
     lead: { wave: 'square', gain: 0.14, vib: 0 }, bassWave: 'triangle',

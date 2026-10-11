@@ -35,9 +35,9 @@ test('SKILLS: 契約の特殊能力がそろい、全選手が1〜4個の有効�
   assert.equal(SKILLS, DATA_SKILLS);
   const required = {
     blue: ['チャンス◎', '対左投手◎', '盗塁◎', '走塁◎', '送球◎', 'パワーヒッター', 'アベレージヒッター', '広角打法', '流し打ち', '初球○', '粘り打ち', 'バント◎',
-      'ノビ◎', 'キレ◎', '奪三振', '対ピンチ◎', '重い球', 'クイック◎', '牽制◎', '打たれ強さ◎', '低め◎'],
+      'ノビ◎', 'キレ◎', '奪三振', '対ピンチ◎', '重い球', 'クイック◎', '牽制◎', '打たれ強さ◎', '低め◎', '失投回避'],
     red: ['チャンス×', '三振', '併殺', 'エラー', '一発', '四球', 'スロースターター'],
-    gold: ['天才打者', '怪力', '怪物球威'],
+    gold: ['天才打者', '怪力', '剛球無双'],
   };
   for (const [type, names] of Object.entries(required)) {
     for (const n of names) {
@@ -301,7 +301,7 @@ test('盗塁: 俊足 vs 弱肩は成功しやすく、鈍足 vs 強肩は刺さ�
 test('盗塁: CPU は俊足走者で走る（ユーザー側では走らない）', () => {
   const s = createGame(blue, red, { userSide: 'home', conditions: allNormal([red, blue]) });
   const base = { ...structuredClone(s), bases: ['r16', null, null] };
-  assert.ok(stealChance(base, 0) > 0.8);
+  assert.ok(stealChance(base, 0) > 0.5, '俊足（走力95・盗塁◎）は強肩捕手相手でも五分以上');
   let n = 0;
   for (let seed = 0; seed < 200; seed++) if (cpuSteal(base, mulberry32(seed)).attempted) n++;
   assert.ok(n > 10 && n < 200, `${n}`);

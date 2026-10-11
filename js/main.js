@@ -38,7 +38,7 @@ function fitStage() {
 }
 
 const SETTINGS_KEY = 'dokidoki.settings';
-const DEFAULTS = { innings: 3, difficulty: 'normal', sound: true, music: true, musicVolume: 0.7 };
+const DEFAULTS = { innings: 3, difficulty: 'normal', sound: true, music: true, musicVolume: 0.7, cursorSpeed: 3 };
 function loadSettings() {
   const out = { ...DEFAULTS };
   try {
@@ -48,6 +48,7 @@ function loadSettings() {
     if (typeof o.sound === 'boolean') out.sound = o.sound;
     if (typeof o.music === 'boolean') out.music = o.music;
     if (typeof o.musicVolume === 'number' && o.musicVolume >= 0 && o.musicVolume <= 1) out.musicVolume = o.musicVolume;
+    if (Number.isInteger(o.cursorSpeed) && o.cursorSpeed >= 1 && o.cursorSpeed <= 5) out.cursorSpeed = o.cursorSpeed;
   } catch (e) { /* ignore */ }
   return out;
 }
@@ -55,7 +56,9 @@ const settings = loadSettings();
 const sound = createSound({ enabled: settings.sound, onVoiceActivity: active => music.duck(active) });
 const music = createMusic({ enabled: settings.music, volume: settings.musicVolume });
 function saveSettings(patch) {
-  Object.assign(settings, patch || {});
+  const p = { ...(patch || {}) };
+  if ('cursorSpeed' in p && !(Number.isInteger(p.cursorSpeed) && p.cursorSpeed >= 1 && p.cursorSpeed <= 5)) delete p.cursorSpeed;
+  Object.assign(settings, p);
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
   sound.setEnabled(settings.sound);
   music.setEnabled(settings.music);
@@ -230,6 +233,7 @@ const KEYMAP = {
   ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
   z: 'z', Z: 'z', x: 'x', X: 'x', Enter: 'enter', Escape: 'esc',
   s: 'steal', S: 'steal', c: 'bunt', C: 'bunt',
+  v: 'center', V: 'center', Shift: 'center', // ミートカーソルを中心へ戻す
 };
 
 function typingTarget(e) {

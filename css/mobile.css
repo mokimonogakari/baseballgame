@@ -70,6 +70,10 @@ body.compact .fs-btn svg{width:32px;height:32px}
 .tu-dir.left{left:0;top:calc(var(--dp) + var(--gap))}
 .tu-dir.right{right:0;top:calc(var(--dp) + var(--gap))}
 .tu-dir.is-down{background:rgba(255,213,74,.92)}
+/* 十字キー中央の ◎（ミートカーソルを中心へ）。打席のときだけ */
+#touch-ui .tu-dir.tu-center{left:calc(var(--dp) + var(--gap) + var(--dp) * .14);top:calc(var(--dp) + var(--gap) + var(--dp) * .14);width:calc(var(--dp) * .72);height:calc(var(--dp) * .72);
+  font-size:calc(var(--dp) * .3);background:rgba(127,209,255,.78)}
+#touch-ui:not([data-step="bat"]) .tu-center{visibility:hidden}
 
 .tu-act{position:absolute;right:var(--tu-r);bottom:var(--tu-b);display:flex;gap:12px;align-items:flex-end}
 .tu-round{width:var(--zx);height:var(--zx);border-radius:50%;border:4px solid rgba(28,43,75,.82);box-shadow:0 4px 0 rgba(28,43,75,.5);
@@ -289,3 +293,15 @@ body.compact .auto-hint{font-size:22px}
 #touch-ui .tu-bases button.recommended{background:#ffd54a;box-shadow:0 0 0 3px white}
 #touch-ui[data-mode="field"][data-field-phase="secured"] .tu-bases{display:flex}
 #touch-ui[data-mode="field"][data-field-phase="secured"] .tu-dpad,#touch-ui[data-mode="field"][data-field-phase="secured"] .tu-act{display:none}
+
+/* 打撃演出（style.css の末尾）のスマホ横向き調整 */
+/* スマホ横向きではパネルと重なるので出さない（タッチのボタンに操作が書いてある） */
+body.compact .key-hint{display:none!important}
+body.compact .pitch-info b{font-size:24px}
+body.compact .pitch-info span{font-size:30px}
+body.compact .pitch-info{top:590px}
+body.compact .chance-banner{font-size:76px}
+body.compact .overlay.hr-caption .overlay-sub{font-size:52px}
+
+/* スマホ: 盗塁ボタンは打者に重ならないよう、スコアボード直下の中央に出す */
+#touch-ui .tu-mini .tu-steal{position:fixed;left:50%;top:calc(env(safe-area-inset-top, 0px) + 17vh);transform:translateX(-50%);min-width:120px}

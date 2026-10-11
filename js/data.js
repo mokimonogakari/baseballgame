@@ -27,7 +27,7 @@
  *   決め球       → pitches  = 球種と変化量 level 0〜7（伝説級の決め球 6〜7、一級品 5、持ち球 2〜4）
  *   投手の打撃能力は contact/power 10〜25 前後（投手の打撃成績から）。
  * ■ スケール（パワプロ準拠）: 普通のレギュラー C〜B（60〜79）、スター A（80〜89）、
- *   S（90+）は歴代屈指の選手の代名詞の能力だけ。金特（天才打者・怪力・怪物球威）は歴代屈指の選手のみ、
+ *   S（90+）は歴代屈指の選手の代名詞の能力だけ。金特（天才打者・怪力・剛球無双）は歴代屈指の選手のみ、
  *   赤特は実際の弱点（三振の多い長距離砲 → 三振、制球難 → 四球 など）。
  *   時代補正: 昭和の投高打低・打高投低は均し、チームコスト（playerCost の合計）が 160〜167 にそろうよう
  *   代名詞以外の能力を控えめにしている。skills は SKILLS の名前のみ（1〜4個）。
@@ -115,8 +115,10 @@ export const SKILLS = {
   '一発': { type: 'red', target: 'pitcher', desc: '本塁打を打たれやすい' },
   '四球': { type: 'red', target: 'pitcher', desc: '制球が乱れやすい' },
   'スロースターター': { type: 'red', target: 'pitcher', desc: '序盤（1〜2回）に不安定' },
+  // ── 投手（青・追加）
+  '失投回避': { type: 'blue', target: 'pitcher', desc: '甘い球（失投）が真ん中に入りにくい' },
   // ── 投手（金）
-  '怪物球威': { type: 'gold', target: 'pitcher', desc: '怪物級の球威で打球が飛ばない' },
+  '剛球無双': { type: 'gold', target: 'pitcher', desc: '圧倒的な球威で空振りを奪い打球が飛ばない' },
 };
 
 /**
@@ -229,11 +231,11 @@ const RED_PLAYERS = [
   { id: 'r11', name: '真壁 透', number: 21, pos: '投', positions: ['投'], bats: '左', throws: '左', age: 28, trajectory: 1,
     contact: 14, power: 14, speed: 32, arm: 62, fielding: 58, catching: 56,
     pitching: { role: 'starter', velocity: 144, control: 78, stamina: 82, pitches: P(['changeup', 4], ['slider', 4], ['twoseam', 3], ['curve', 2]) },
-    skills: ['低め◎', '対ピンチ◎'],
+    skills: ['低め◎', '対ピンチ◎', '失投回避'],
     model: 'NPB 2023年 最多勝の精密機械左腕タイプ（16勝3敗・与四球率1点台・多彩な変化球）' },
   { id: 'r12', name: '藤代 晴', number: 41, pos: '投', positions: ['投'], bats: '左', throws: '右', age: 25, trajectory: 1,
     contact: 12, power: 14, speed: 34, arm: 74, fielding: 50, catching: 50,
-    pitching: { role: 'reliever', velocity: 153, control: 58, stamina: 40, pitches: P(['slider', 4], ['changeup', 3]) },
+    pitching: { role: 'setup', velocity: 153, control: 58, stamina: 40, pitches: P(['slider', 4], ['changeup', 3]) },
     skills: ['重い球', '打たれ強さ◎'],
     model: 'NPB 160km/hを計測する剛腕セットアッパータイプ（2022年 最優秀中継ぎ・39試合連続無失点の記録も）' },
   { id: 'r13', name: '灰谷 進', number: 15, pos: '投', positions: ['投'], bats: '右', throws: '右', age: 26, trajectory: 1,
@@ -323,13 +325,13 @@ const BLUE_PLAYERS = [
     model: 'MLB 日本人メジャーの先駆け、新人王・両リーグでノーヒットノーランの右腕タイプ（体を大きくひねる独特のフォーム・落差の大きいフォーク・奪三振王2度）' },
   { id: 'b12', name: '朝比奈 迅', number: 34, pos: '投', positions: ['投'], bats: '右', throws: '右', age: 38, trajectory: 1,
     contact: 10, power: 12, speed: 30, arm: 60, fielding: 54, catching: 54,
-    pitching: { role: 'reliever', velocity: 139, control: 82, stamina: 36, pitches: P(['splitter', 6]) },
-    skills: ['キレ◎', '打たれ強さ◎'],
+    pitching: { role: 'setup', velocity: 139, control: 82, stamina: 36, pitches: P(['splitter', 6]) },
+    skills: ['キレ◎', '打たれ強さ◎', '失投回避'],
     model: 'MLB 2013年 世界一チームの守護神、与四球率1点前後の精密右腕タイプ（平均140km/h台前半でも空振りを奪う切れ味鋭いスプリット）' },
   { id: 'b13', name: '剣持 雷', number: 19, pos: '投', positions: ['投'], bats: '右', throws: '右', age: 35, trajectory: 1,
     contact: 10, power: 12, speed: 32, arm: 70, fielding: 56, catching: 52,
     pitching: { role: 'closer', velocity: 149, control: 75, stamina: 32, pitches: P(['cutter', 7]) },
-    skills: ['怪物球威', '対ピンチ◎'],
+    skills: ['剛球無双', '対ピンチ◎'],
     model: 'MLB 通算652セーブの史上最多記録を持つ守護神タイプ（カットボール1球種で打者を圧倒し、バットを次々と折る球威）' },
   { id: 'b14', name: '橘 涼介', number: 13, pos: '投', positions: ['投'], bats: '右', throws: '右', age: 24, trajectory: 1,
     contact: 10, power: 12, speed: 34, arm: 80, fielding: 52, catching: 50,
@@ -404,16 +406,16 @@ const GREEN_PLAYERS = [
   { id: 'g10', name: '御堂 蓮司', number: 18, pos: '投', positions: ['投'], bats: '右', throws: '右', age: 24, trajectory: 1,
     contact: 22, power: 24, speed: 40, arm: 78, fielding: 62, catching: 58,
     pitching: { role: 'starter', velocity: 145, control: 78, stamina: 92, pitches: P(['slider', 6], ['shoot', 4]) },
-    skills: ['打たれ強さ◎', '対ピンチ◎', 'キレ◎'],
+    skills: ['打たれ強さ◎', '対ピンチ◎', 'キレ◎', '失投回避'],
     model: '日本シリーズ4連投4連勝の伝説の大エースタイプ（シーズン42勝・切れ味鋭いスライダーとシュート・連投に耐える無尽蔵のスタミナ）' },
   { id: 'g11', name: '早乙女 慧', number: 21, pos: '投', positions: ['投'], bats: '左', throws: '左', age: 26, trajectory: 1,
     contact: 24, power: 30, speed: 36, arm: 74, fielding: 56, catching: 52,
     pitching: { role: 'starter', velocity: 148, control: 60, stamina: 92, pitches: P(['curve', 6], ['changeup', 2]) },
-    skills: ['怪物球威', '奪三振', '四球'],
+    skills: ['剛球無双', '奪三振', '四球'],
     model: '前人未到の通算400勝・4490奪三振の大投手タイプ（長身から投げ下ろす剛速球と縦に割れるカーブの左腕・打撃も良い）' },
   { id: 'g12', name: '鷹野 鋭', number: 41, pos: '投', positions: ['投'], bats: '右', throws: '右', age: 30, trajectory: 1,
     contact: 12, power: 12, speed: 32, arm: 64, fielding: 60, catching: 56,
-    pitching: { role: 'reliever', velocity: 138, control: 74, stamina: 55, pitches: P(['sinker', 6], ['shoot', 3], ['curve', 2]) },
+    pitching: { role: 'setup', velocity: 138, control: 74, stamina: 55, pitches: P(['sinker', 6], ['shoot', 3], ['curve', 2]) },
     skills: ['低め◎', '重い球'],
     model: '通算284勝・3年連続MVPのアンダースロー、地をはうシンカーの名手タイプ（ロングリリーフで起用）' },
   { id: 'g13', name: '轟 武蔵', number: 15, pos: '投', positions: ['投'], bats: '左', throws: '左', age: 31, trajectory: 1,
@@ -499,11 +501,11 @@ const YELLOW_PLAYERS = [
   { id: 'y11', name: '月島 静', number: 11, pos: '投', positions: ['投'], bats: '左', throws: '左', age: 41, trajectory: 1,
     contact: 12, power: 12, speed: 26, arm: 56, fielding: 58, catching: 56,
     pitching: { role: 'starter', velocity: 136, control: 76, stamina: 82, pitches: P(['sinker', 6], ['curve', 4], ['slider', 3]) },
-    skills: ['低め◎', '打たれ強さ◎'],
+    skills: ['低め◎', '打たれ強さ◎', '失投回避'],
     model: '50歳まで現役、通算219勝のスクリューボールの名手左腕タイプ（史上最年長勝利・41歳でノーヒットノーラン）' },
   { id: 'y12', name: '赤羽 猛', number: 29, pos: '投', positions: ['投'], bats: '右', throws: '右', age: 25, trajectory: 1,
     contact: 10, power: 12, speed: 34, arm: 70, fielding: 50, catching: 50,
-    pitching: { role: 'reliever', velocity: 148, control: 66, stamina: 40, pitches: P(['fork', 4], ['curve', 2]) },
+    pitching: { role: 'setup', velocity: 148, control: 66, stamina: 40, pitches: P(['fork', 4], ['curve', 2]) },
     skills: ['ノビ◎', '対ピンチ◎'],
     model: '打者が分かっていても空振りする伸び上がる直球のセットアッパータイプ（2005年 80登板・防御率1点台）' },
   { id: 'y13', name: '鬼頭 雷蔵', number: 19, pos: '投', positions: ['投'], bats: '右', throws: '右', age: 30, trajectory: 1,

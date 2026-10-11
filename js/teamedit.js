@@ -15,8 +15,8 @@ const COLORS = [
   ['#E5484D', 'あか'], ['#1E88E5', 'あお'], ['#43A047', 'みどり'],
   ['#F5A623', 'オレンジ'], ['#8E44AD', 'むらさき'], ['#EC407A', 'ピンク'],
 ];
-const ROT_LABELS = ['先発①', '先発②', '中継ぎ①', '中継ぎ②', '中継ぎ③', '抑え'];
-const ROT_ROLES = ['starter', 'starter', 'reliever', 'reliever', 'reliever', 'closer'];
+const ROT_LABELS = ['先発①', '先発②', 'セットアッパー', '中継ぎ①', '中継ぎ②', '抑え'];
+const ROT_ROLES = ['starter', 'starter', 'setup', 'reliever', 'reliever', 'closer'];
 const MAX_NAME = 12;
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -183,7 +183,7 @@ export function renderTeamEdit(el, ctx) {
     ? rb('球速', velScale(p.pitching.velocity)) + rb('制球', p.pitching.control) + rb('体力', p.pitching.stamina)
     : rb('ミ', p.contact) + rb('パ', p.power) + rb('走', p.speed) + rb('守', p.fielding));
   const chips = (p, n = 2) => (p.skills || []).slice(0, n).map((s) => `<span class="chip te-chip">${esc(s)}</span>`).join('');
-  const roleTag = (p) => (p.pitching ? ({ starter: '先発', reliever: '中継ぎ', closer: '抑え' }[p.pitching.role] || '投手') : '');
+  const roleTag = (p) => (p.pitching ? ({ starter: '先発', setup: 'セットアッパー', reliever: '中継ぎ', closer: '抑え' }[p.pitching.role] || '投手') : '');
   const teamDot = (p) => `<span class="te-dot" style="background:${esc(p._team?.color || '#999')}" title="${esc(p._team?.name || '')}">${esc(p._team?.short || '')}</span>`;
 
   function filtered() {
@@ -218,7 +218,7 @@ export function renderTeamEdit(el, ctx) {
   function rosterHTML() {
     const rp = rosterPlayers();
     const fielders = rp.filter((p) => !p.pitching).sort((a, b) => FIELD_POSITIONS.indexOf(a.pos) - FIELD_POSITIONS.indexOf(b.pos) || overallOf(b) - overallOf(a));
-    const pit = rp.filter((p) => p.pitching).sort((a, b) => ['starter', 'reliever', 'closer'].indexOf(a.pitching.role) - ['starter', 'reliever', 'closer'].indexOf(b.pitching.role) || overallOf(b) - overallOf(a));
+    const pit = rp.filter((p) => p.pitching).sort((a, b) => ['starter', 'setup', 'reliever', 'closer'].indexOf(a.pitching.role) - ['starter', 'setup', 'reliever', 'closer'].indexOf(b.pitching.role) || overallOf(b) - overallOf(a));
     const row = (p) => {
       const c = playerCost(p); const col = costColor(c);
       return `<button class="te-row te-rrow" data-nav data-col="1" data-fk="ros-${esc(p.id)}" data-del="${esc(p.id)}" title="はずす">

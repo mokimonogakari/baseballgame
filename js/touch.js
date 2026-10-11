@@ -5,7 +5,7 @@
  *   バント/盗塁・さいはい/メニュー）を拡大縮小されるステージの外（#touch-ui、画面の四隅に固定）に出す。
  *   ボタンは実際の CSS px で指サイズのまま。入力は試合画面の handleKey/handleKeyUp に流すので、
  *   守備ビュー（fielding.js）や采配メニューへの振り分けは game.js 側の既存ロジックのまま。
- * - フィールドのドラッグでミートカーソル／投球の狙いを相対移動（トラックパッド風）。
+ * - フィールドのドラッグでミートカーソル／投球の狙いを相対移動（トラックパッド風）。十字キー中央の ◎ でカーソルを中心へ戻す。
  * - ゾーンのタップ: 打席ではカーソルをその位置へ動かし、投球後なら選んだ打ち方（ミート/強振/バント）でスイング。
  *   投球のコース選びでは狙いをその位置へ。10px 以上動かしたらドラッグ扱い（スイングしない）。
  * - 打席では「ミート / 強振 / バント」の切り替えと大きな「スイング」ボタン。守備中（CPU が投げる）は
@@ -62,6 +62,7 @@ export function initTouch({ stage, wrap, getGame, getCurrent, getScale }) {
     <button type="button" class="tu-dir left" data-key="left" aria-label="左">◀</button>
     <button type="button" class="tu-dir right" data-key="right" aria-label="右">▶</button>
     <button type="button" class="tu-dir down" data-key="down" aria-label="下">▼</button>
+    <button type="button" class="tu-dir tu-center" data-key="center" aria-label="カーソルを中心へ">◎</button>
   </div>
   <div class="tu-mini">
     <button type="button" class="tu-pill tu-steal" data-key="steal">盗塁</button>

@@ -202,6 +202,53 @@ export function createSound({ enabled = true, onVoiceActivity = () => {} } = {})
     pitch(t) { noise(t, 0.35, { f0: 400, f1: 2500, q: 2, peak: 0.35, a: 0.12 }); },
     swing(t) { noise(t, 0.16, { f0: 3000, f1: 500, q: 1.5, peak: 0.5, a: 0.03 }); },
     hit(t) { crack(t); },
+    // 当たりの質ごとの打球音（真芯 = 高く澄んだ金属的な響き + 低音の胴鳴り / 芯 = 乾いた短い音 / それ以外 = 鈍い音）
+    hit_core(t) {
+      noise(t, 0.12, { type: 'highpass', f0: 2600, f1: 1400, peak: 1, a: 0.001 });
+      tone(t, 1760, 0.32, { type: 'triangle', peak: 0.32, a: 0.001, f1: 1580 });
+      tone(t, 2637, 0.22, { type: 'sine', peak: 0.18, a: 0.001, f1: 2400 });
+      tone(t, 220, 0.2, { type: 'sine', peak: 0.6, a: 0.002, f1: 60 });
+      noise(t + 0.07, 0.08, { type: 'highpass', f0: 2200, f1: 1200, peak: 0.45, a: 0.002 });
+    },
+    hit_good(t) {
+      noise(t, 0.08, { type: 'highpass', f0: 2000, f1: 1000, peak: 0.85, a: 0.002 });
+      tone(t, 1320, 0.14, { type: 'triangle', peak: 0.24, a: 0.001, f1: 1050 });
+      tone(t, 180, 0.12, { type: 'sine', peak: 0.45, a: 0.002, f1: 70 });
+    },
+    hit_weak(t) {
+      noise(t, 0.07, { type: 'bandpass', f0: 900, f1: 500, q: 1.2, peak: 0.6, a: 0.002 });
+      tone(t, 300, 0.09, { type: 'square', peak: 0.12, a: 0.001, f1: 150 });
+    },
+    hit_foul(t) {
+      noise(t, 0.06, { type: 'bandpass', f0: 1500, f1: 800, q: 1, peak: 0.55, a: 0.002 });
+      tone(t, 700, 0.05, { type: 'square', peak: 0.1, a: 0.001, f1: 450 });
+    },
+    // 歓声が大きくふくらむ（ホームラン）
+    crowd(t) {
+      noise(t, 2.6, { type: 'bandpass', f0: 500, f1: 1500, q: 0.5, peak: 0.75, a: 0.9, buf: pinkBuf });
+      noise(t + 0.3, 2.2, { type: 'bandpass', f0: 1200, f1: 2400, q: 0.7, peak: 0.3, a: 0.8, buf: pinkBuf });
+    },
+    // ホームランのファンファーレ（オリジナル）
+    fanfare(t) {
+      const seq = [[392, 0, 0.12], [523.25, 0.12, 0.12], [659.25, 0.24, 0.12], [783.99, 0.36, 0.3], [659.25, 0.7, 0.12], [783.99, 0.82, 0.12], [1046.5, 0.94, 0.7]];
+      seq.forEach(([f, d, len]) => {
+        tone(t + d, f, len, { type: 'square', peak: 0.13, a: 0.008 });
+        tone(t + d, f / 2, len, { type: 'triangle', peak: 0.12, a: 0.008 });
+      });
+    },
+    // 出塁の短いファンファーレ
+    onbase(t) {
+      [[587.33, 0], [739.99, 0.09], [880, 0.18]].forEach(([f, d], i) => tone(t + d, f, i === 2 ? 0.28 : 0.09, { type: 'square', peak: 0.1, a: 0.005 }));
+    },
+    // チャンスの合図
+    chance(t) {
+      [[659.25, 0], [659.25, 0.1], [880, 0.2], [987.77, 0.34]].forEach(([f, d], i) => tone(t + d, f, i === 3 ? 0.3 : 0.08, { type: 'square', peak: 0.11, a: 0.004 }));
+    },
+    // 死球（体に当たる鈍い音）
+    hbp(t) {
+      tone(t, 120, 0.14, { peak: 0.6, a: 0.002, f1: 50 });
+      noise(t, 0.08, { type: 'lowpass', f0: 700, f1: 200, peak: 0.5, a: 0.002 });
+    },
     homerun(t) {
       crack(t);
       [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(t + 0.25 + i * 0.13, f, i === 3 ? 0.6 : 0.16, { type: 'square', peak: 0.18, a: 0.01 }));

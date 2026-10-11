@@ -37,7 +37,7 @@ test('データ: 4チーム76人、各チーム打順9人・投手6人・控え�
     assert.equal(t.bench.length, 5);
     assert.equal(t.players.length, 19);
     const roles = t.pitchers.map((id) => t.players.find((p) => p.id === id).pitching.role);
-    assert.deepEqual(roles, ['starter', 'starter', 'reliever', 'reliever', 'reliever', 'closer']);
+    assert.deepEqual(roles, ['starter', 'starter', 'setup', 'reliever', 'reliever', 'closer']);
     for (const id of [...t.lineup, ...t.pitchers, ...t.bench]) assert.ok(t.players.some((p) => p.id === id), id);
     for (const id of t.pitchers) assert.ok(t.players.find((p) => p.id === id).pitching);
     for (const id of t.bench) {
@@ -179,3 +179,5 @@ test('9回裏はホームリードなら行わない', () => {
 // 'node --test tests/' は tests/package.json の main（このファイル）だけを実行するため、追加のテストをここから読み込む
 import './subs-fielding.test.mjs';
 import './powerpro.test.mjs';
+import './systems.test.mjs';
+import './challenge.test.mjs';
