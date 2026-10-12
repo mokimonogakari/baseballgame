@@ -97,3 +97,16 @@
   .fv *,.fv *::before,.fv *::after{animation:none!important;transition:none!important}
 }
 .fv-rm .fv-tok-arrow,.fv-rm .fv-landmark{animation:none}
+
+/* ---- 送球先マーカーはタップ/クリックで送球 ---- */
+.fv-user .fv-basemark.show span{pointer-events:auto;cursor:pointer}
+.fv-user .fv-basemark.show span:hover{filter:brightness(1.1)}
+/* ---- おまかせ守備（fieldMode 'assist'）: 捕るまでは操作なし、捕ったら送球先だけ ---- */
+.fv-assist .fv-dpad,.fv-assist .fv-btn-x{display:none}
+.fv-assist[data-phase="live"] .fv-actions,.fv-assist[data-phase="bobble"] .fv-actions{display:none}
+.fv-assist[data-phase="secured"] .fv-basemark span{font-size:18px;height:34px;padding:0 14px}
+.fv-assist[data-phase="secured"]::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:1400;
+  box-shadow:inset 0 0 0 6px rgba(127,209,255,.55),inset 0 0 80px rgba(127,209,255,.35)}
+.fv-assist .fv-chip{background:#7FD1FF}
+/* CPU 守備ビュー（ユーザーの攻撃中・早送り）: タップでスキップ */
+.fv-cpu{cursor:pointer}

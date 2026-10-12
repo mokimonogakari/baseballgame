@@ -10,7 +10,9 @@
  *   投球のコース選びでは狙いをその位置へ。10px 以上動かしたらドラッグ扱い（スイングしない）。
  * - 打席では「ミート / 強振 / バント」の切り替えと大きな「スイング」ボタン。守備中（CPU が投げる）は
  *   「さいはい / メニュー」と大きな「早送り」ボタン（Z）だけ（data-step="auto"。ラベルは game.touchInfo() から同期）。
- *   手動投球（game.js の MANUAL_PITCHING）では球種パネルのタップ・「決定」「投げる」「球種」ボタン。
+ *   手動投球（設定 pitchMode 'manual'）: 球種ボタンのタップ（1 回で決定）→ ドラッグ/タップでコース →「投げる」→
+ *   縮むリングが重なった瞬間に「いま！」（または画面のどこかをタップ）。
+ * - 守備ビュー: 野手操作（field）、おまかせ守備（field-assist: 捕ったら送球先の塁ボタンだけ）、CPU 守備（field-cpu: タップでスキップ）。
  * - 縦向きでは「横向きにしてあそんでね」（#rotate-hint）を出して入力を止める。
  * - ダブルタップ拡大・ピンチ・長押しメニューなどスマホ特有の誤動作を抑える。
  *
@@ -243,16 +245,18 @@ export function initTouch({ stage, wrap, getGame, getCurrent, getScale }) {
       b.setAttribute('aria-label', b.textContent + 'へ送球' + (recommended ? '（おすすめ）' : ''));
     });
     const subsOpen = !!stage.querySelector('#screen-game .sb');
-    const mode = subsOpen ? 'subs' : fv ? (fv.classList.contains('fv-user') ? 'field' : 'field-cpu') : 'play';
+    // field = 守備ビューで野手を操作、field-assist = おまかせ守備（送球先だけ）、field-cpu = CPU 守備を見るだけ（タップでスキップ）
+    const mode = subsOpen ? 'subs' : fv ? (fv.classList.contains('fv-user') ? (fv.classList.contains('fv-assist') ? 'field-assist' : 'field') : 'field-cpu') : 'play';
     set('mode', mode, (v) => { ui.dataset.mode = v; if (v === 'subs') releaseAll(); });
     let info = { step: '', swingMode: 'meet', canBunt: false };
     if (mode === 'play') { try { info = g.touchInfo?.() || info; } catch (er) { /* ignore */ } }
     set('step', info.step || '', (v) => { ui.dataset.step = v; });
-    const src = mode === 'field' ? fv : root;
+    const src = mode === 'field' || mode === 'field-assist' ? fv : root;
     let zl = mode === 'field-cpu' ? 'スキップ' : (src.querySelector('[data-ref="z-label"]')?.textContent || '');
     let xl = src.querySelector('[data-ref="x-label"]')?.textContent || '';
     let zb = 'Z', xb = 'X';
     if (mode === 'field') { zb = fv.dataset.phase === 'secured' ? '送球' : 'ダイブ'; xb = '切替'; }
+    if (mode === 'field-assist') { zb = '送球'; zl = 'おすすめ'; xb = ''; xl = ''; }
     // 打席・投球では大ボタンを言葉に（スイング / 決定 / 投げる）。小さい字は打ち方・球種名
     const pitchName = () => root.querySelector('.dial-pitch.selected .dp-name')?.textContent
       || (root.querySelector('.pitch-item.selected')?.getAttribute('title') || '').split(' ')[0];
@@ -260,7 +264,7 @@ export function initTouch({ stage, wrap, getGame, getCurrent, getScale }) {
     if (info.step === 'bat') { zb = 'スイング'; zl = SW[info.swingMode] || 'ミート'; xb = '強振'; xl = ''; }
     else if (info.step === 'select') { zb = '決定'; zl = pitchName(); }
     else if (info.step === 'aim') { zb = '投げる'; zl = pitchName(); xb = '球種'; xl = ''; }
-    else if (info.step === 'windup') { zb = '投げる'; zl = 'もう一度'; }
+    else if (info.step === 'windup') { zb = 'いま！'; zl = ''; }
     else if (info.step === 'auto') { zb = '早送り'; zl = ''; xl = ''; } // 守備中は CPU が投げる
     set('z', zl, (v) => { tu.z.textContent = v; });
     set('x', xl, (v) => { tu.x.textContent = v; });

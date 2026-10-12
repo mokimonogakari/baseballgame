@@ -12,6 +12,13 @@
  *     field?: engine.FIELD          (塁・フェンス座標の上書き。形は柔軟に解釈)
  *     runnerColor?: '#E5484D'       (走者のヘルメット色)
  *     batterId?, batterName?
+ *     mode?: 'assist' | 'manual' | 'cpu'
+ *            assist: 打球に一番早く追いつく野手が自動で追って捕る。ユーザーは送球先だけ選ぶ（塁ボタン / 矢印+Z）。
+ *                    送球先を選ぶ間はスローモーション、1.2 秒（実時間）でおすすめの塁へ自動送球
+ *            manual: ユーザーが野手を動かす（十字キー・Z ダイブ・X 切替）。省略時はタッチ端末なら従来どおり指を離すと自動で追う
+ *            cpu   : CPU の守備を見せるだけ（userControlled=false）
+ *     timeScale?: 再生速度（CPU 守備ビューの早送り 1.5 など）
+ *     tapToSkip?: true なら画面のどこをタップ/クリックしてもスキップ（CPU 守備のみ）
  *   }
  *   key: 'up'|'down'|'left'|'right'|'z'|'x'|'enter'
  *   result = { caughtInAir, fielderId, fieldedAt:{x,y}, fieldTime, throwTo:1|2|3|4|null, throwTime, error,
@@ -106,7 +113,15 @@ export function createFieldingView(container, opts = {}) {
     return F.fenceLine + (F.fenceCenter - F.fenceLine) * c;
   };
   const userControlled = !!opts.userControlled;
-  const touchAssist = userControlled && typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  const assistMode = userControlled && opts.mode === 'assist';      // 自動で捕球、送球先だけ選ぶ
+  const manualMode = userControlled && opts.mode === 'manual';
+  // 従来のタッチ補助（指を離すと自動で追う・送球選択のスロー）: mode 未指定のタッチ端末。assist は常に
+  const touchAssist = userControlled && (assistMode || (!manualMode && coarse));
+  const SLOW_SECURED = 0.4;           // 送球先を選ぶ間のスローモーション
+  const slowSecured = assistMode || (userControlled && coarse);
+  const timeScale = clamp(num(opts.timeScale, 1), 0.25, 4);
+  const AUTO_THROW_REAL_S = 1.2;      // assist: 実時間でこの秒数たったらおすすめの塁へ自動送球
   const isHR = !!ball.isHomeRun || ball.type === 'hr';
   const type = isHR ? 'hr' : (ball.type || 'grounder');
   const outs = num(opts.state?.outs, 0);
@@ -326,7 +341,7 @@ export function createFieldingView(container, opts = {}) {
 
   // ---------- DOM ----------
   const root = document.createElement('div');
-  root.className = `fv${userControlled && !isHR ? ' fv-user' : ' fv-cpu'}${isHR ? ' fv-hr' : ''}${reduceMotion ? ' fv-rm' : ''}`;
+  root.className = `fv${userControlled && !isHR ? ' fv-user' : ' fv-cpu'}${assistMode && !isHR ? ' fv-assist' : ''}${isHR ? ' fv-hr' : ''}${reduceMotion ? ' fv-rm' : ''}`;
   root.innerHTML = template();
   container.appendChild(root);
   const q = (s) => root.querySelector(s);
@@ -418,7 +433,7 @@ export function createFieldingView(container, opts = {}) {
 </svg>
 ${baseMarks}
 <div class="fv-layer"><div class="fv-landmark"></div><div class="fv-shadow"></div><div class="fv-ball"></div></div>
-<div class="fv-hud"><span class="fv-chip">${userControlled && !isHR ? '守備' : '打球'}</span><span class="fv-type">${esc(typeLabel)}</span><span class="fv-who" data-ref="who"></span></div>
+<div class="fv-hud"><span class="fv-chip">${userControlled && !isHR ? (assistMode ? 'おまかせ守備' : '守備') : '打球'}</span><span class="fv-type">${esc(typeLabel)}</span><span class="fv-who" data-ref="who"></span></div>
 <div class="fv-callout"></div>
 <div class="fv-prompt"></div>
 ${userControlled && !isHR ? `
@@ -431,11 +446,20 @@ ${userControlled && !isHR ? `
 <div class="fv-actions">
   <button type="button" class="fv-btn-x" data-key="x" aria-label="X"><b>X</b><small data-ref="x-label">切替</small></button>
   <button type="button" class="fv-btn-z" data-key="z" aria-label="Z"><b>Z</b><small data-ref="z-label">キャッチ</small></button>
-</div>` : '<button type="button" class="fv-skip" data-key="enter">Enter:スキップ ▶▶</button>'}`;
+</div>` : `<button type="button" class="fv-skip" data-key="enter">${opts.tapToSkip ? 'タップ / Enter:スキップ ▶▶' : 'Enter:スキップ ▶▶'}</button>`}`;
   }
 
   function bindTouch() {
     const on = (node, ev, fn) => { node.addEventListener(ev, fn); listeners.push([node, ev, fn]); };
+    // 送球先マーカーをタップ/クリックでその塁へ送球
+    dom.bases.forEach((m) => on(m, 'pointerdown', (e) => {
+      if (!userControlled || phase !== 'secured') return;
+      e.preventDefault();
+      e.stopPropagation();
+      handleKey(`base${m.dataset.base}`, true);
+    }));
+    // CPU 守備: どこをタップしてもスキップ
+    if (!userControlled && opts.tapToSkip) on(root, 'pointerdown', (e) => { e.preventDefault(); skipToEnd(); });
     root.querySelectorAll('[data-key]').forEach((btn) => {
       const k = btn.dataset.key;
       on(btn, 'pointerdown', (e) => { e.preventDefault(); try { btn.setPointerCapture?.(e.pointerId); } catch (er) { /* */ } handleKey(k, true); });
@@ -465,8 +489,10 @@ ${userControlled && !isHR ? `
     else if (phase === 'live') txt = '↑↓←→:移動　Z:キャッチ／ダイブ　X:選手切替';
     else if (phase === 'bobble') txt = 'ボールを拾っています…';
     else if (phase === 'secured') txt = `↑2塁　←3塁　→1塁　↓本塁　Z:送球${selBase ? `（${BASE_NAME[selBase]}）` : ''}`;
-    if (touchAssist && phase === 'live') txt = 'おまかせ追球中 · 十字キーで動かせる · ダイブで好捕！';
-    if (touchAssist && phase === 'secured') txt = `投げる塁をタップ！${selBase ? ` おすすめ：${BASE_NAME[selBase]}` : ''}`;
+    if (touchAssist && !assistMode && phase === 'live') txt = 'おまかせ追球中 · 十字キーで動かせる · ダイブで好捕！';
+    if (assistMode && phase === 'live') txt = 'おまかせ守備：野手が自動で捕るよ';
+    if (assistMode && phase === 'secured' && !coarse) txt = `送球先: →1塁 ↑2塁 ←3塁 ↓本塁 → Z　（そのままなら ${selBase ? BASE_NAME[selBase] : '投げない'}）`;
+    if (coarse && userControlled && phase === 'secured') txt = `投げる塁をタップ！${selBase ? ` おすすめ：${BASE_NAME[selBase]}` : ''}`;
     if (dom.prompt) { dom.prompt.textContent = txt; dom.prompt.style.display = txt ? '' : 'none'; }
     if (dom.zLabel) dom.zLabel.textContent = phase === 'secured' ? '送球' : 'キャッチ';
   }
@@ -722,6 +748,10 @@ ${userControlled && !isHR ? `
         continue;
       }
       if (f === holder) { f.moving = false; continue; }
+      if (phase === 'live' && f === user && userControlled && assistMode) {
+        if (t >= f.react) moveToward(f, intercept(f, t), dt); else f.moving = false; // おまかせ: 最短で打球へ
+        continue;
+      }
       if (phase === 'live' && f === user && userControlled) {
         const vx = (held.right ? 1 : 0) - (held.left ? 1 : 0);
         const vy = (held.up ? 1 : 0) - (held.down ? 1 : 0);
@@ -772,7 +802,7 @@ ${userControlled && !isHR ? `
     } else if (phase === 'bobble') {
       if (t >= bobbleUntil) enterSecured();
     } else if (phase === 'secured') {
-      const wait = userControlled ? AUTO_THROW_S : CPU_HOLD_S;
+      const wait = !userControlled ? CPU_HOLD_S : assistMode ? AUTO_THROW_REAL_S * SLOW_SECURED : AUTO_THROW_S;
       if (t - securedAt >= wait) doThrow(userControlled ? selBase : smartBase());
     } else if (phase === 'throw') {
       if (t >= throwInfo.start + throwInfo.dur) {
@@ -802,7 +832,7 @@ ${userControlled && !isHR ? `
     const dtReal = lastNow ? Math.min(0.05, (nowMs - lastNow) / 1000) : 0;
     lastNow = nowMs;
     // Slow the entire play equally so runners and throw physics remain fair.
-    let acc = dtReal * (touchAssist && phase === 'secured' ? 0.4 : 1);
+    let acc = dtReal * timeScale * (slowSecured && phase === 'secured' ? SLOW_SECURED : 1);
     while (acc > 1e-6 && phase !== 'done') {
       const d = Math.min(DT, acc);
       step(d);
@@ -868,7 +898,8 @@ ${userControlled && !isHR ? `
       held[key] = !!isDown;
       if (isDown && userControlled && phase === 'secured' && KEY_BASE[key]) {
         selBase = KEY_BASE[key];
-        securedAt = Math.max(securedAt, t - AUTO_THROW_S + 0.6); // 選択後は少し待つ
+        // 選択後は少し待つ（assist は実時間 0.6 秒）
+        securedAt = assistMode ? Math.max(securedAt, t - (AUTO_THROW_REAL_S - 0.6) * SLOW_SECURED) : Math.max(securedAt, t - AUTO_THROW_S + 0.6);
         play('select');
         setPrompt();
       }
@@ -879,6 +910,7 @@ ${userControlled && !isHR ? `
       if (key === 'enter' || key === 'z') skipToEnd();
       return;
     }
+    if (assistMode && phase === 'live') return; // おまかせ: 捕るまでは操作なし
     if (key === 'x') switchFielder();
     else if (key === 'z' || key === 'enter') {
       if (phase === 'live' && key === 'z') tryDive();

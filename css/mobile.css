@@ -305,3 +305,29 @@ body.compact .overlay.hr-caption .overlay-sub{font-size:52px}
 
 /* スマホ: 盗塁ボタンは打者に重ならないよう、スコアボード直下の中央に出す */
 #touch-ui .tu-mini .tu-steal{position:fixed;left:50%;top:calc(env(safe-area-inset-top, 0px) + 17vh);transform:translateX(-50%);min-width:120px}
+
+/* おまかせ守備（fieldMode 'assist'）: 捕るまではボタンなし、捕ったら塁ボタン（＋ Z = おすすめへ送球） */
+#touch-ui[data-mode="field-assist"] .tu-dpad,#touch-ui[data-mode="field-assist"] .tu-x,#touch-ui[data-mode="field-assist"] .tu-mini,#touch-ui[data-mode="field-assist"] .tu-top{display:none}
+#touch-ui[data-mode="field-assist"]:not([data-field-phase="secured"]) .tu-act{display:none}
+#touch-ui[data-mode="field-assist"][data-field-phase="secured"] .tu-bases{display:flex}
+#touch-ui[data-mode="field-assist"][data-field-phase="secured"] .tu-bases button{min-width:84px;min-height:68px;font-size:22px}
+/* 投球のタイミング（windup）: 大ボタンを目立たせる */
+#touch-ui[data-step="windup"] .tu-z{background:rgba(255,213,74,1);box-shadow:0 0 0 6px rgba(255,213,74,.45),0 4px 0 rgba(28,43,75,.5)}
+/* 球種ボタン（タッチ・スマホ横向き）: 大きなカード */
+body.touch .pt-grid{gap:10px}
+body.touch .pt-card{min-height:84px}
+body.touch.compact .pitch-dial{left:300px;top:96px;width:680px}
+body.touch.compact .pt-card{min-height:118px;padding:8px 12px;border-radius:16px}
+body.touch.compact .pt-card .pt-arrow{font-size:40px;width:52px}
+body.touch.compact .pt-card .dp-name{font-size:28px}
+body.touch.compact .pt-card .dp-velo{font-size:30px}
+body.touch.compact .pt-card .dp-velo small{font-size:16px}
+body.touch.compact .pt-card .lv-bars>i{width:10px;height:15px}
+body.compact .pitch-sel{top:330px;font-size:24px}
+body.compact .pitch-sel span{font-size:19px}
+body.compact .grade-pop{font-size:64px}
+body.compact .pitch-info em{font-size:26px}
+body.compact .power-chip i{font-size:15px}
+body.compact .power-chip b{width:34px;height:34px;font-size:22px}
+/* おまかせ守備の送球選択: 塁ボタンと重ならないよう案内を上へ */
+body.touch .fv-assist[data-phase="secured"] .fv-prompt,body.touch .fv-user[data-phase="secured"] .fv-prompt{bottom:auto;top:96px}

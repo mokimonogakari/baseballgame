@@ -534,3 +534,47 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .overlay.hr-caption .overlay-big{animation:hr-zoom .5s cubic-bezier(.2,1.4,.4,1)}
 .overlay.hr-caption .overlay-sub{margin-top:10px;font-size:44px;color:var(--accent);background:rgba(14,24,48,.82);padding:4px 28px;border-radius:14px;text-shadow:none}
 @keyframes hr-zoom{0%{transform:scale(.3);opacity:0}100%{transform:scale(1);opacity:1}}
+
+/* =========================================================
+   手動投球（pitchMode 'manual'）: 球種ボタン・選んだ球種・タイミング判定
+   ========================================================= */
+.pitch-dial{left:392px;top:388px;width:496px;padding:14px 12px 10px}
+.pt-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pt-grid.n1,.pt-grid.n2{grid-template-columns:repeat(2,1fr)}
+.pt-grid.n4{grid-template-columns:repeat(2,1fr)}
+.pt-card{position:relative;display:flex;flex-direction:row;align-items:center;gap:6px;min-height:64px;padding:6px 8px;border-radius:12px;
+  background:linear-gradient(180deg,#3D5482,#2B3F66);box-shadow:inset 0 -4px 0 rgba(0,0,0,.25),0 0 0 2px rgba(255,255,255,.12);cursor:pointer;min-width:0}
+.pt-card:hover{box-shadow:inset 0 -4px 0 rgba(0,0,0,.25),0 0 0 2px rgba(255,213,74,.7)}
+.pt-card .pt-arrow{flex:none;width:34px;text-align:center;font-size:26px;font-weight:900;color:var(--accent);line-height:1}
+.pt-card .pt-arrow.is-fb{font-size:18px;color:#fff}
+.pt-card .pt-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.pt-card .dp-name{font-size:16px}
+.pt-card .pt-lv-fb{font-size:10px;font-weight:900;color:var(--muted-light);letter-spacing:.5px}
+.pt-card .dp-velo{flex:none;font-size:18px;font-weight:900;color:var(--accent);line-height:1;text-align:right}
+.pt-card .dp-velo small{display:block;font-size:10px;color:var(--muted-light)}
+.pt-card.selected{background:linear-gradient(180deg,#FFE27A,var(--accent));box-shadow:inset 0 -4px 0 rgba(28,43,75,.25),0 0 0 3px #fff}
+.pt-card.selected .pt-arrow,.pt-card.selected .dp-velo{color:var(--red)}
+.pt-card.selected .pt-arrow.is-fb,.pt-card.selected .dp-name{color:var(--navy)}
+.pt-card.selected .dp-velo small,.pt-card.selected .pt-lv-fb{color:#5B6B8A}
+/* コース選び・投球中: 選んだ球種と次の操作 */
+.pitch-sel{position:absolute;left:640px;top:350px;transform:translateX(-50%);display:none;flex-direction:column;align-items:center;gap:2px;padding:5px 18px;border-radius:14px;
+  background:rgba(14,24,48,.86);border:3px solid var(--accent);color:#fff;font-weight:900;white-space:nowrap;z-index:7;pointer-events:none;font-size:18px}
+.pitch-sel.show{display:flex}
+.pitch-sel span{font-size:13px;color:var(--muted-light)}
+/* タイミング判定のポップ（ベスト / グッド / ふつう / ミス） */
+.grade-pop{position:absolute;left:640px;top:480px;transform:translate(-50%,-50%);font-size:46px;font-weight:900;white-space:nowrap;pointer-events:none;z-index:9;opacity:0;
+  text-shadow:3px 3px 0 #1C2B4B,-2px -2px 0 #1C2B4B,2px -2px 0 #1C2B4B,-2px 2px 0 #1C2B4B}
+.grade-pop.go{animation:grade-pop .9s ease-out forwards}
+.grade-pop.g-best{color:#FF4FA3}.grade-pop.g-good{color:var(--accent)}.grade-pop.g-normal{color:#fff}.grade-pop.g-miss{color:#7FD1FF}
+@keyframes grade-pop{0%{opacity:0;transform:translate(-50%,-50%) scale(.5)}20%{opacity:1;transform:translate(-50%,-60%) scale(1.2)}75%{opacity:1;transform:translate(-50%,-80%) scale(1)}100%{opacity:0;transform:translate(-50%,-95%) scale(1)}}
+.pitch-info .pi-grade{position:absolute;left:4px;bottom:100%;margin-bottom:4px;font-style:normal;font-size:15px;padding:1px 10px;border-radius:6px;background:#34476E;color:#fff}
+.pitch-info .pi-grade:empty{display:none}
+.pitch-info .pi-grade.g-best{background:#FF4FA3}.pitch-info .pi-grade.g-good{background:var(--accent);color:var(--navy)}.pitch-info .pi-grade.g-miss{background:#7FD1FF;color:var(--navy)}
+.windup-ring.is-best{border-color:#FF4FA3;box-shadow:0 0 0 2px var(--navy),0 0 18px 6px rgba(255,79,163,.85)}
+.aim-ring.is-miss{border-color:#7FD1FF;border-style:solid;background:radial-gradient(circle,rgba(127,209,255,.35),rgba(127,209,255,.08) 70%)}
+/* 球威のランク（投手パネルの球速の横） */
+.power-chip{margin-left:auto;display:inline-flex;align-items:center;gap:5px}
+.power-chip i{font-style:normal;font-size:12px;color:var(--muted-light);font-weight:800}
+.power-chip b{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;font-size:18px;font-weight:900;box-shadow:inset 0 -3px 0 rgba(0,0,0,.18)}
+/* 打撃アシストで大きくしたミートカーソル */
+.cursor.is-assist{border-style:solid}
