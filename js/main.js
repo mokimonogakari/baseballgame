@@ -1,6 +1,7 @@
 import { TEAMS } from './data.js';
 import { openChallenge } from './challenge.js';
 import { renderTitle, renderTeam, renderResult, renderSettings } from './screens.js';
+import { isGuideOpen, closeGuide } from './title.js';
 import { createGameScreen } from './game.js';
 import { boxScore } from './engine.js';
 import { renderTeamEdit, loadMyTeam, MY_TEAM_ID } from './teamedit.js';
@@ -38,7 +39,7 @@ function fitStage() {
 }
 
 const SETTINGS_KEY = 'dokidoki.settings';
-const DEFAULTS = { innings: 3, difficulty: 'normal', sound: true, music: true, musicVolume: 0.7, cursorSpeed: 3 };
+const DEFAULTS = { innings: 3, difficulty: 'normal', sound: true, music: true, musicVolume: 0.7, cursorSpeed: 3, pitchMode: 'manual', fieldMode: 'assist', battingAssist: null };
 function loadSettings() {
   const out = { ...DEFAULTS };
   try {
@@ -49,6 +50,9 @@ function loadSettings() {
     if (typeof o.music === 'boolean') out.music = o.music;
     if (typeof o.musicVolume === 'number' && o.musicVolume >= 0 && o.musicVolume <= 1) out.musicVolume = o.musicVolume;
     if (Number.isInteger(o.cursorSpeed) && o.cursorSpeed >= 1 && o.cursorSpeed <= 5) out.cursorSpeed = o.cursorSpeed;
+    if (['manual', 'cpu'].includes(o.pitchMode)) out.pitchMode = o.pitchMode;
+    if (['manual', 'assist', 'auto'].includes(o.fieldMode)) out.fieldMode = o.fieldMode;
+    if (o.battingAssist === null || [0, 1, 2, 3].includes(o.battingAssist)) out.battingAssist = o.battingAssist ?? null;
   } catch (e) { /* ignore */ }
   return out;
 }
@@ -58,6 +62,9 @@ const music = createMusic({ enabled: settings.music, volume: settings.musicVolum
 function saveSettings(patch) {
   const p = { ...(patch || {}) };
   if ('cursorSpeed' in p && !(Number.isInteger(p.cursorSpeed) && p.cursorSpeed >= 1 && p.cursorSpeed <= 5)) delete p.cursorSpeed;
+  if ('pitchMode' in p && !['manual', 'cpu'].includes(p.pitchMode)) delete p.pitchMode;
+  if ('fieldMode' in p && !['manual', 'assist', 'auto'].includes(p.fieldMode)) delete p.fieldMode;
+  if ('battingAssist' in p && !(p.battingAssist === null || [0, 1, 2, 3].includes(p.battingAssist))) delete p.battingAssist;
   Object.assign(settings, p);
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
   sound.setEnabled(settings.sound);
@@ -98,6 +105,7 @@ const ctx = {
   get teams() { return myTeam ? [...TEAMS, myTeam] : TEAMS; },
   get userTeamId() { return userTeamId; },
   get opponentTeamId() { return opponentTeamId; },
+  matchup() { const g = gameCtx(); return { user: g.teams[0], opp: g.teams[1] }; },
   set opponentTeamId(id) { opponentTeamId = id; },
   setUserTeam(id) { if (ctx.teams.some((t) => t.id === id)) userTeamId = id; },
   setMyTeam(team) { myTeam = team && team.id === MY_TEAM_ID ? team : null; if (!myTeam && userTeamId === MY_TEAM_ID) userTeamId = TEAMS[0].id; },
@@ -253,7 +261,10 @@ window.addEventListener('keydown', (e) => {
   const key = KEYMAP[e.key];
   if (current === 'game' && (key === 'up' || key === 'down' || key === 'left' || key === 'right' || e.key === ' ')) e.preventDefault();
   if (!key) return;
-  if (current === 'title') { if (key === 'enter') go('game'); }
+  if (current === 'title') {
+    if (isGuideOpen()) { if (key === 'enter' || key === 'esc' || key === 'z' || key === 'x') { e.preventDefault(); closeGuide(); } }
+    else if (key === 'enter' && !(e.target.closest && e.target.closest('button'))) go('game');
+  }
   else if (current === 'team' || current === 'settings') { if (key === 'esc') go('title'); }
   else if (current === 'teamedit') { if (editScreen) { if (e.key.startsWith('Arrow') || e.key === ' ') e.preventDefault(); editScreen.handleKey(key); } }
   else if (current === 'game') {

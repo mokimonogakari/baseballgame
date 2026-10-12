@@ -41,43 +41,8 @@ function overallOf(p) {
   return Math.round(avg([p.contact, p.power, p.speed, p.arm, p.fielding]));
 }
 
-/* ---------------- Title ---------------- */
-export function renderTitle(el, ctx) {
-  const team = ctx.teams.find((t) => t.id === ctx.userTeamId) || ctx.teams[0];
-  el.innerHTML = `<div class="title" style="position:absolute;inset:0">
-    <div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div>
-    <div class="stand"></div><div class="stand-line"></div>
-    <div class="grass"></div><div class="grass-stripe s1"></div><div class="grass-stripe s2"></div>
-    <div class="dirt"></div>
-    <div class="logo">
-      <div class="logo-kicker">ぼくらの熱闘 野球ゲーム</div>
-      <h1>ドキドキ<span class="logo-accent">ベースボール</span></h1>
-      <div class="press-start">PRESS START</div>
-    </div>
-    <div class="menu">
-      <button class="menu-btn primary" data-act="game">たいせん（1試合）</button>
-      <button class="menu-btn" data-act="team">チーム・選手</button>
-      <button class="menu-btn" data-act="teamedit">オリジナルチーム</button>
-      <button class="menu-btn" data-act="challenge">⚾ 10球チャレンジ</button>
-      <button class="menu-btn" data-act="settings">せってい</button>
-    </div>
-    <div class="hero">${chibiHTML(team.color, team.number ?? 1, 1.6)}</div>
-    <div class="guide">
-      <h3>あそびかた</h3>
-      <div class="row"><b>矢印キー</b><span>カーソル移動</span></div>
-      <div class="row"><b>Z</b><span>ミート / 早送り</span></div>
-      <div class="row"><b>X</b><span>強振</span></div>
-      <div class="row"><b>Enter</b><span>決定 / 見送り</span></div>
-      <div class="row"><b>Esc</b><span>戻る</span></div>
-    </div>
-    <div class="footer"><span>GitHub Pages で配信 ・ 球審ボイス VOICEVOX:青山龍星</span><span>v0.3</span></div>
-  </div>`;
-  el.querySelector('[data-act="game"]').onclick = () => ctx.go('game');
-  el.querySelector('[data-act="challenge"]').onclick = () => ctx.openChallenge();
-  el.querySelector('[data-act="team"]').onclick = () => ctx.go('team');
-  el.querySelector('[data-act="teamedit"]').onclick = () => ctx.go('teamedit');
-  el.querySelector('[data-act="settings"]').onclick = () => ctx.go('settings');
-}
+/* タイトルは title.js */
+export { renderTitle } from './title.js';
 
 /* ---------------- Team ---------------- */
 let teamTab = 'players';
@@ -228,31 +193,60 @@ export function renderResult(el, ctx, box, state) {
 }
 
 /* ---------------- Settings ---------------- */
+// help: 選択中の項目の説明（1行）。tab: 'play'（試合・操作） | 'sound'（おと）
 const SET_GROUPS = [
-  { key: 'innings', label: 'イニング', opts: [[3, '3'], [6, '6'], [9, '9']] },
-  { key: 'difficulty', label: '難易度', opts: [['easy', 'かんたん'], ['normal', 'ふつう'], ['hard', 'むずかしい']] },
-  { key: 'sound', label: 'サウンド', opts: [[true, 'オン'], [false, 'オフ']] },
-  { key: 'music', label: 'BGM', opts: [[true, 'オン'], [false, 'オフ']] },
-  { key: 'musicVolume', label: 'BGM 音量', cls: 'seg-vol', opts: [[0.2, '1'], [0.4, '2'], [0.6, '3'], [0.8, '4'], [1, '5']] },
-  { key: 'cursorSpeed', label: 'カーソル速度', cls: 'seg-vol', opts: [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5']] },
+  { tab: 'play', key: 'innings', label: 'イニング（試合の長さ）', opts: [[3, '3回'], [6, '6回'], [9, '9回']],
+    help: { 3: 'さくっと短い試合', 6: 'ちょうどいい長さ', 9: 'じっくり本格的に' } },
+  { tab: 'play', key: 'difficulty', label: 'むずかしさ', opts: [['easy', 'かんたん'], ['normal', 'ふつう'], ['hard', 'むずかしい']],
+    help: { easy: '球が遅く、通過位置が見える', normal: 'ふつうの速さ', hard: '球が速い' } },
+  { tab: 'play', key: 'battingAssist', label: '打撃アシスト', cls: 'seg-5', opts: [['auto', '自動'], [0, 'なし'], [1, 'よわめ'], [2, 'つよめ'], [3, 'さいだい']],
+    help: { auto: 'スマホはつよめ、キーボードはなし', 0: 'ぜんぶ自分のタイミング', 1: 'ちょっとだけ助けてくれる', 2: 'ミートしやすくなる', 3: 'ほとんど当たる！' } },
+  { tab: 'play', key: 'pitchMode', label: '投球', opts: [['manual', '自分で投げる'], ['cpu', 'CPUにまかせる']],
+    help: { manual: 'コースと球種を自分で選ぶ', cpu: '守備のときはCPUが投げる（打撃に集中）' } },
+  { tab: 'play', key: 'fieldMode', label: '守備', cls: 'seg-3', opts: [['manual', '自分で'], ['assist', 'アシスト'], ['auto', 'オート']],
+    help: { manual: '追う・捕る・投げるを全部自分で', assist: '追球はおまかせ、送球だけ選ぶ', auto: '守備は全部おまかせ' } },
+  { tab: 'play', key: 'cursorSpeed', label: 'カーソル速度', cls: 'seg-vol', opts: [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5']],
+    help: { 1: 'ゆっくり（正確に動かせる）', 2: 'ややゆっくり', 3: 'ふつう', 4: 'ややはやい', 5: 'とてもはやい' } },
+  { tab: 'sound', key: 'sound', label: '効果音', opts: [[true, 'オン'], [false, 'オフ']], help: { true: 'ヒット音や歓声が鳴る', false: '効果音を消す' } },
+  { tab: 'sound', key: 'music', label: 'BGM', opts: [[true, 'オン'], [false, 'オフ']], help: { true: '音楽が流れる', false: '音楽を消す' } },
+  { tab: 'sound', key: 'musicVolume', label: 'BGM 音量', cls: 'seg-vol', opts: [[0.2, '1'], [0.4, '2'], [0.6, '3'], [0.8, '4'], [1, '5']], help: {} },
 ];
-const DIFF_HELP = { easy: '球が遅く、通過位置が見える', normal: 'ふつう', hard: '球が速い' };
+let setTab = 'play';
+
+function curVal(g, cur) {
+  if (g.key === 'battingAssist') return [0, 1, 2, 3].includes(cur.battingAssist) ? cur.battingAssist : 'auto';
+  if (g.key === 'musicVolume') {
+    const v = g.opts.find(([x]) => Math.abs((cur.musicVolume ?? 0.7) - x) < 0.1);
+    return v ? v[0] : 0.6;
+  }
+  if (g.key === 'cursorSpeed') return cur.cursorSpeed ?? 3;
+  return cur[g.key];
+}
 
 export function renderSettings(el, ctx) {
   const cur = ctx.settings || {};
-  const groups = SET_GROUPS.map((g) => `<div class="set-group"><h3>${g.label}</h3><div class="seg${g.cls ? ' ' + g.cls : ''}">${g.opts.map(([v, l]) =>
-    `<button class="seg-btn${(g.key === 'musicVolume' ? Math.abs((cur.musicVolume ?? 0.7) - v) < 0.1 : (g.key === 'cursorSpeed' ? (cur.cursorSpeed ?? 3) : cur[g.key]) === v) ? ' selected' : ''}" data-key="${g.key}" data-val="${esc(v)}">${l}</button>`).join('')}</div>
-    ${g.key === 'difficulty' ? `<p class="set-help">${esc(DIFF_HELP[cur.difficulty] || '')}</p>` : ''}</div>`).join('');
+  const groups = SET_GROUPS.filter((g) => g.tab === setTab).map((g) => {
+    const v = curVal(g, cur);
+    return `<div class="set-group"><h3>${g.label}</h3><div class="seg${g.cls ? ' ' + g.cls : ''}">${g.opts.map(([x, l]) =>
+      `<button class="seg-btn${x === v ? ' selected' : ''}" data-key="${g.key}" data-val="${esc(x)}">${l}</button>`).join('')}</div>
+      <p class="set-help">${esc(g.help[v] || '')}</p></div>`;
+  }).join('');
   el.innerHTML = `<div class="settings" style="position:absolute;inset:0">
-    <div class="settings-header"><button class="back-btn" data-act="back">もどる</button><h2>せってい</h2></div>
-    <div class="settings-body">${groups}<button class="set-test" data-act="test">テスト再生</button></div>
+    <div class="settings-header"><button class="back-btn" data-act="back">もどる</button><h2>せってい</h2>
+      <div class="set-tabs"><button class="tab${setTab === 'play' ? ' active' : ''}" data-tab="play">試合・操作</button><button class="tab${setTab === 'sound' ? ' active' : ''}" data-tab="sound">おと</button></div></div>
+    <div class="settings-body set-${setTab}">${groups}${setTab === 'sound' ? '<button class="set-test" data-act="test">テスト再生</button>' : ''}</div>
   </div>`;
   el.querySelector('[data-act="back"]').onclick = () => ctx.go('title');
-  el.querySelector('[data-act="test"]').onclick = () => ctx.sound && ctx.sound.play('hit');
+  el.querySelector('[data-act="test"]')?.addEventListener('click', () => ctx.sound && ctx.sound.play('hit'));
+  el.querySelectorAll('[data-tab]').forEach((b) => (b.onclick = () => { setTab = b.dataset.tab; renderSettings(el, ctx); }));
   el.querySelectorAll('.seg-btn').forEach((b) => (b.onclick = () => {
     const key = b.dataset.key;
     const raw = b.dataset.val;
-    const val = key === 'innings' || key === 'cursorSpeed' ? Number(raw) : key === 'sound' || key === 'music' ? raw === 'true' : key === 'musicVolume' ? Number(raw) : raw;
+    let val;
+    if (key === 'innings' || key === 'cursorSpeed' || key === 'musicVolume') val = Number(raw);
+    else if (key === 'sound' || key === 'music') val = raw === 'true';
+    else if (key === 'battingAssist') val = raw === 'auto' ? null : Number(raw);
+    else val = raw;
     ctx.saveSettings({ [key]: val });
     renderSettings(el, ctx);
     if (key === 'sound' && val) ctx.sound.play('select');
