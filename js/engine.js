@@ -5,7 +5,7 @@
  * 打席判定は docs/BALANCE.md の係数表・能力補正・投球位置モデルに従う。
  * 打球・守備・走塁・選手交代の API は docs/ENGINE-API.md を参照。
  */
-import { PITCH_TYPES, PITCH_DIRECTIONS, SKILLS, playerCost } from './data.js';
+import { PITCH_TYPES, PITCH_DIRECTIONS, SKILLS, playerCost, rank } from './data.js';
 
 export { PITCH_DIRECTIONS, SKILLS, playerCost };
 
@@ -45,7 +45,7 @@ export const TUNING = {
   tripleC: 0.35, tripleP: 0.15,
   hrC: 0.35, hrP: 0.85,
   // 打席結果の基礎重みの倍率（係数表の値に掛ける。NPB の打球構成に合わせる）
-  strikeBase: 0.78, singleBase: 1.03, doubleBase: 0.28, tripleBase: 3.5, hrBase: 0.75, goBase: 1.0, foBase: 1.0,
+  strikeBase: 0.78, singleBase: 1.09, doubleBase: 0.30, tripleBase: 3.5, hrBase: 0.83, goBase: 1.0, foBase: 1.0,
   outZoneStrike: 1.4, outZoneOther: 0.7,
   sigmaBase: 0.7, sigmaK: 0.20,
   // CPU 打者
@@ -99,6 +99,14 @@ export const TUNING = {
   staminaUnit: 32, starterBonus: 1500, runnerCost1: 3, runnerCost2: 7, runnerCost3: 10, lateStarterCost: 9, lateInning: 7,
   hitCost: [0, 30, 45, 60, 80], runCost: 40, tieCost: 60, leadCost: 80, errorCost: 70, staminaCostMul: 1.0,
   fatigueAt: 15, reliefAt: 20, starterLatePct: 58,
+  // 球威（docs/ENGINE-API.md「球威」）: P = 球威の優位 = (実効球威 − 50)/49（打者パワーで最大 powerCounter 割引）。
+  // 結果の重みに exp(係数 × P) を掛ける（正 = 増える、負 = 減る）。
+  powerHr: -0.55, powerXbh: -0.40, powerSingle: -0.12, powerGo: 0.10, powerFo: 0.15, powerFoul: 0.10, powerStrike: 0.05,
+  powerCounter: 0.5, // 打者の実効パワー 50→99 で 球威の優位を 0→50% 打ち消す（押し負けない）
+  powerFatigueAt: 50, powerFatigue: 20, // スタミナ残り 50% 未満で球威が下がる（0% で −20）
+  mistakePower: 20, // 失投の球威 −20
+  jamRate: 0.6, jamMax: 0.6, jamMin: 0.1, // 凡打が「詰まらせた」になる確率 = min(jamMax, P × jamRate)（P ≥ jamMin のとき）
+  jamGrounder: [70, 105], jamPopup: 0.8, // 詰まった打球: ボテボテのゴロ 70〜105 km/h、フライアウトは 80% が内野フライ
 };
 
 /** 1球ごとのスタミナ消費（ゲージ単位、球種別） */
@@ -109,22 +117,22 @@ export const PITCH_COST = {
 
 /**
  * 調子（createGame で全選手に割り当て、state.condition[playerId]）。
- * 効果は加算（effectiveStats）: bat = 打者のミート・パワー・弾道、pit = 投手の球速 km/h・コントロール・スタミナ。
+ * 効果は加算（effectiveStats）: bat = 打者のミート・パワー・弾道、pit = 投手の球速 km/h・コントロール・スタミナ・球威（pitchPower）。
  *   打者 +15/+10/0/−10/−15（弾道は絶好調 +1・絶不調 −1）。投手の値は独自（パワプロの値は未確認）。
  * mult: 旧方式の倍率（表示・互換用。swingProbabilities の ctx.batterCond / pitcherCond に渡せる）。
  * weight: 抽選の重み（10/25/35/20/10）。キーの並びが良い順。
  */
 export const CONDITIONS = {
   絶好調: { label: '絶好調', mult: 1.10, arrow: '↑', color: '#FF4FA3', weight: 10,
-    bat: { contact: 15, power: 15, trajectory: 1 }, pit: { velocity: 3, control: 10, stamina: 25 } },
+    bat: { contact: 15, power: 15, trajectory: 1 }, pit: { velocity: 3, control: 10, stamina: 25, pitchPower: 8 } },
   好調: { label: '好調', mult: 1.05, arrow: '↗', color: '#F57C00', weight: 25,
-    bat: { contact: 10, power: 10, trajectory: 0 }, pit: { velocity: 2, control: 5, stamina: 12 } },
+    bat: { contact: 10, power: 10, trajectory: 0 }, pit: { velocity: 2, control: 5, stamina: 12, pitchPower: 4 } },
   普通: { label: '普通', mult: 1.00, arrow: '→', color: '#FDD835', weight: 35,
-    bat: { contact: 0, power: 0, trajectory: 0 }, pit: { velocity: 0, control: 0, stamina: 0 } },
+    bat: { contact: 0, power: 0, trajectory: 0 }, pit: { velocity: 0, control: 0, stamina: 0, pitchPower: 0 } },
   不調: { label: '不調', mult: 0.95, arrow: '↘', color: '#1E88E5', weight: 20,
-    bat: { contact: -10, power: -10, trajectory: 0 }, pit: { velocity: -2, control: -5, stamina: -8 } },
+    bat: { contact: -10, power: -10, trajectory: 0 }, pit: { velocity: -2, control: -5, stamina: -8, pitchPower: -4 } },
   絶不調: { label: '絶不調', mult: 0.90, arrow: '↓', color: '#7E57C2', weight: 10,
-    bat: { contact: -15, power: -15, trajectory: -1 }, pit: { velocity: -3, control: -10, stamina: -15 } },
+    bat: { contact: -15, power: -15, trajectory: -1 }, pit: { velocity: -3, control: -10, stamina: -15, pitchPower: -8 } },
 };
 /** 調子のラベル（良い順） */
 export const CONDITION_LABELS = Object.keys(CONDITIONS);
@@ -164,7 +172,7 @@ export const SKILL_FX = {
   'キレ◎': { when: 'breaking', strike: 1.20 },
   '奪三振': { when: 'twoStrikes', strike: 1.15 },
   '対ピンチ◎': { when: 'risp', hits: 0.88, strike: 1.10 },
-  '重い球': { hr: 0.70, double: 0.85, go: 1.10 },
+  '重い球': { add: { pitchPower: 15 } }, // 球威 +15（旧: hr×0.70・double×0.85・go×1.10 の倍率は廃止＝二重に数えない）
   'クイック◎': { delivery: 0.15 },
   '牽制◎': { lead: 0.8 },
   '打たれ強さ◎': { when: 'runners', hits: 0.94 },
@@ -175,13 +183,14 @@ export const SKILL_FX = {
   'スロースターター': { when: 'early', add: { control: -15, velocity: -2 } },
   '失投回避': { mistake: 0.5 },
   '剛球無双': { strike: 1.20, hits: 0.88, hr: 0.60 },
+  '軽い球': { add: { pitchPower: -15 } }, // 球威 −15
 };
 const FX_IDX = { strike: [1], foul: [2], go: [3], fo: [4], single: [5], double: [6], triple: [7], hr: [8], hits: [5, 6, 7, 8] };
 /** 改名した特殊能力（旧名 → 新名）。チームエディタの保存データなど旧名を読み替える */
 export const SKILL_RENAMES = { 怪物球威: '剛球無双' };
 
 /** 絶好調で打ち消される赤特 */
-export const CONDITION_CANCEL_RED = ['三振', 'チャンス×', '四球', 'スロースターター', '一発'];
+export const CONDITION_CANCEL_RED = ['三振', 'チャンス×', '四球', 'スロースターター', '一発', '軽い球'];
 /** 絶不調でも有効な青特（走塁・守備系）。それ以外の青特は絶不調で無効 */
 export const CONDITION_KEEP_BLUE = ['盗塁◎', '走塁◎', '送球◎', 'キャッチャー◎', 'クイック◎', '牽制◎', 'バント◎'];
 
@@ -252,13 +261,15 @@ function safeCur(s, fn) {
  *       （チャンス◎ 得点圏 ミート+15・パワー+10 など SKILL_FX の add）。
  * 投手: velocity（km/h）/ control / stamina（調子 +3/+10/+25 … −3/−10/−15）、状況の特殊能力（四球 制球−20 など）、
  *       疲労（スタミナ残り 15% 未満で 球速 最大 −4 km/h・制球 最大 −30）。
+ * 球威: pitchPower（素の値 pitching.power、調子 +8/+4/0/−4/−8、重い球 +15・軽い球 −15、スタミナ残り 50% 未満で 最大 −20）。
+ *       power は打撃のパワーのまま（投手も打席に立つため別名）。docs/ENGINE-API.md「球威」。
  * 走力・肩・守備・捕球は調子の影響を受けない。
  * @param {object|null} state
  * @param {object} player
  * @param {{batter?:object, pitcher?:object, type?:string, loc?:{x:number,y:number}, condition?:boolean, skills?:boolean, fatigue?:boolean}} [ctx]
  *   batter/pitcher: 対戦相手（省略時は state の現在の打者・投手）。condition:false / skills:false / fatigue:false で各補正を外す。
  * @returns {{contact:number, power:number, trajectory:number, speed:number, arm:number, fielding:number, catching:number,
- *   velocity:number|null, control:number|null, stamina:number|null, condition:string, fatigue:number,
+ *   velocity:number|null, control:number|null, stamina:number|null, pitchPower:number|null, condition:string, fatigue:number, powerFatigue:number,
  *   mods:{source:string, add:object}[]}}
  */
 export function effectiveStats(state, player, ctx = {}) {
@@ -269,7 +280,8 @@ export function effectiveStats(state, player, ctx = {}) {
     contact: player.contact ?? 50, power: player.power ?? 50, trajectory: player.trajectory ?? 2,
     speed: player.speed ?? 50, arm: player.arm ?? 50, fielding: player.fielding ?? 50, catching: player.catching ?? 50,
     velocity: pit ? pit.velocity ?? 135 : null, control: pit ? pit.control ?? 50 : null, stamina: pit ? pit.stamina ?? 50 : null,
-    condition: cond, fatigue: 0, mods: [],
+    pitchPower: pit ? pitchPowerOf(player) : null,
+    condition: cond, fatigue: 0, powerFatigue: 0, mods: [],
   };
   const apply = (source, add) => {
     let used = false;
@@ -302,11 +314,60 @@ export function effectiveStats(state, player, ctx = {}) {
       r.fatigue = r2(fat);
       apply('疲労', { velocity: -4 * fat, control: -30 * fat });
     }
+    const pf = powerFatigueOf(state, player);
+    if (pf > 0) {
+      r.powerFatigue = r2(pf);
+      apply('疲労（球威）', { pitchPower: -TUNING.powerFatigue * pf });
+    }
   }
   for (const k of ['contact', 'power']) r[k] = clamp(r[k], 1, 110);
   r.trajectory = clamp(r.trajectory, 1, 4);
-  if (pit) { r.control = clamp(r.control, 1, 110); r.stamina = clamp(r.stamina, 1, 120); }
+  if (pit) {
+    r.control = clamp(r.control, 1, 110); r.stamina = clamp(r.stamina, 1, 120);
+    r.pitchPower = Math.round(clamp(r.pitchPower, 1, 110) * 10) / 10;
+  }
   return r;
+}
+
+/**
+ * 投手の素の球威（data の pitching.power、1〜99）。未設定（チームエディタの旧データなど）は球速から推定:
+ * 50 + (球速 km/h − 145) × 1.5（30〜80 に丸める）。
+ * @param {object} pitcher
+ * @returns {number|null}
+ */
+export function pitchPowerOf(pitcher) {
+  const pt = pitcher?.pitching;
+  if (!pt) return null;
+  const v = Number(pt.power);
+  if (Number.isFinite(v) && v > 0) return clamp(Math.round(v), 1, 99);
+  return clamp(Math.round(50 + ((Number(pt.velocity) || 140) - 145) * 1.5), 30, 80);
+}
+
+/**
+ * 球威のランク（S〜G。rank() と同じ区切り: 90 S / 80 A / 70 B / 60 C / 50 D / 40 E / 20 F）
+ * @param {number} v 球威（実効値でも可。小数は丸める）
+ * @returns {'S'|'A'|'B'|'C'|'D'|'E'|'F'|'G'}
+ */
+export function powerRank(v) {
+  return rank(clamp(Math.round(Number(v) || 0), 1, 99));
+}
+
+/** 球威の疲労（スタミナ残り powerFatigueAt% 未満で 0→1）。state を変更しない */
+function powerFatigueOf(s, pitcher) {
+  const pct = staminaFrac(s, pitcher) * 100;
+  const at = TUNING.powerFatigueAt;
+  return pct < at ? (at - pct) / at : 0;
+}
+
+/**
+ * 球威の優位 P（打席結果の重みの補正に使う）。
+ *   w = (実効球威 − 50) / 49、打者の押し返し b = clamp((実効パワー − 50)/49, 0, 1)
+ *   P = w > 0 ? w × (1 − powerCounter × b) : w   （軽い球・球威の低い投手にはパワー打者の割引なし）
+ */
+function powerEdge(pitchPower, batterPower) {
+  const w = ((pitchPower ?? 50) - 50) / 49;
+  const b = clamp(((batterPower ?? 50) - 50) / 49, 0, 1);
+  return w > 0 ? w * (1 - TUNING.powerCounter * b) : w;
 }
 
 /** 守備位置（打順表示・守備交代で使う記号） */
@@ -894,9 +955,16 @@ function skillMultipliers(batter, pitcher, type, ctx = {}) {
  * @param {number} [fat] 疲労 0-1
  * @param {{state?:object, loc?:{x:number,y:number,mistake?:boolean}, batterCond?:number, pitcherCond?:number, skills?:boolean}} [ctx]
  *   state があれば調子（加算）と状況依存の特殊能力（得点圏・カウント等）を反映。skills:false で特殊能力を無視。
- *   loc.mistake（失投）なら見切りやすく（d −0.08）、本塁打 ×1.3。
+ *   loc.mistake（失投）なら見切りやすく（d −0.08）、本塁打 ×1.3、球威 −20。
+ *   ctx.pitchPower: その球の実効球威を直接指定（省略時は effectiveStats の pitchPower。state があれば疲労込み）。
+ *   球威の補正（docs/ENGINE-API.md「球威」）: P = 球威の優位、重み × exp(TUNING.power* × P)。
  */
 export function swingProbabilities(batter, pitcher, type, mode, dist, band, inZone, fat = 0, ctx = {}) {
+  return swingCore(batter, pitcher, type, mode, dist, band, inZone, fat, ctx).probs;
+}
+
+/** swingProbabilities の本体。{ probs, pitchPower（その球の実効球威）, edge（球威の優位 P） } */
+function swingCore(batter, pitcher, type, mode, dist, band, inZone, fat = 0, ctx = {}) {
   const T = TUNING;
   const tbl = SWING_TABLE[mode === 'power' ? 'power' : 'meet'];
   const dd = clamp(Number(dist) || 0, 0, 2);
@@ -919,20 +987,28 @@ export function swingProbabilities(batter, pitcher, type, mode, dist, band, inZo
   const read = (PITCH_TYPES[type] || PITCH_TYPES.fastball).read + (type === 'fastball' ? 0 : 0.025 * (lv - 3));
   const mistake = !!ctx.loc?.mistake;
   const d = read - 0.30 - (mistake ? T.mistakeRead : 0);
+  // 球威（その球の実効値。失投は −20）と、打者のパワーとの押し合い
+  let pp = Number(ctx.pitchPower);
+  if (!Number.isFinite(pp)) {
+    pp = st ? effectiveStats(st, pitcher, { ...eopt, condition: ctx.pitcherCond == null, fatigue: true }).pitchPower : ep.pitchPower;
+    if (mistake) pp -= T.mistakePower;
+  }
+  pp = pp ?? 50;
+  const P = powerEdge(pp, eb.power * bc);
   const mult = [1,
-    T.strikeBase * Math.exp(T.strikeC * c + T.strikeV * v + T.strikeD * d),
-    T.foulBase * Math.exp(T.foulC * c), T.goBase, T.foBase,
-    T.singleBase * Math.exp(T.singleC * c + T.singleP * p),
-    T.doubleBase * Math.exp(T.doubleC * c + T.doubleP * p),
-    T.tripleBase * Math.exp(T.tripleC * c + T.tripleP * p),
-    T.hrBase * Math.exp(T.hrC * c + T.hrP * p) * (mistake ? T.mistakeHr : 1)];
+    T.strikeBase * Math.exp(T.strikeC * c + T.strikeV * v + T.strikeD * d + T.powerStrike * P),
+    T.foulBase * Math.exp(T.foulC * c + T.powerFoul * P), T.goBase * Math.exp(T.powerGo * P), T.foBase * Math.exp(T.powerFo * P),
+    T.singleBase * Math.exp(T.singleC * c + T.singleP * p + T.powerSingle * P),
+    T.doubleBase * Math.exp(T.doubleC * c + T.doubleP * p + T.powerXbh * P),
+    T.tripleBase * Math.exp(T.tripleC * c + T.tripleP * p + T.powerXbh * P),
+    T.hrBase * Math.exp(T.hrC * c + T.hrP * p + T.powerHr * P) * (mistake ? T.mistakeHr : 1)];
   const sk = ctx.skills === false ? null : skillMultipliers(batter, pitcher, type, ctx);
   for (let i = 0; i < row.length; i++) {
     row[i] *= mult[i] * (sk ? sk[i] : 1);
     if (!inZone) row[i] *= i === 1 ? T.outZoneStrike : T.outZoneOther;
   }
   const t = sum(row);
-  return row.map((w) => w / t);
+  return { probs: row.map((w) => w / t), pitchPower: r2(pp), edge: r3(P) };
 }
 
 /** 得点を加算し、打点・自責点・勝敗投手の情報を更新 */
@@ -1546,13 +1622,14 @@ function pullSign(batter, pitcher) {
  * スイングの結果（打席結果・打球のヒント・接触情報）を決める。
  * batInput.pos があればミートカーソル（連続座標）、なければ従来のゾーン距離で判定。
  */
-function swingOutcome(s, batter, pitcher, type, loc, bat, fat, rng) {
+function swingOutcome(s, batter, pitcher, type, loc, bat, fat, rng, pitchPower = null) {
   const T = TUNING;
   const mode = bat.mode === 'power' ? 'power' : bat.mode === 'bunt' ? 'bunt' : 'meet';
   const timing = clamp(Number(bat.timing) || 0, -1, 1);
   const t = Math.abs(timing);
   const band = t < 0.3 ? 0 : t < 0.6 ? 1 : 2;
   const ctx = { state: s, loc };
+  if (Number.isFinite(pitchPower)) ctx.pitchPower = pitchPower;
   const info = { mode, band };
   const usePos = bat.pos && Number.isFinite(bat.pos.x) && Number.isFinite(bat.pos.y);
   let nd; let lift = 0; let hx = 0; let tier = 'other'; let d = 0;
@@ -1608,7 +1685,9 @@ function swingOutcome(s, batter, pitcher, type, loc, bat, fat, rng) {
     d = tier === 'shin2' ? 0 : T.cursorDist * clamp((nd - T.cursorCoreN) / (1 - T.cursorCoreN), 0, 1);
   }
   info.dist = usePos ? r2(d) : d;
-  const probs = swingProbabilities(batter, pitcher, type, mode, d, band, loc.inZone, fat, ctx);
+  const core = swingCore(batter, pitcher, type, mode, d, band, loc.inZone, fat, ctx);
+  const probs = core.probs;
+  info.powerEdge = core.edge;
   if (usePos) {
     // 上下のずれでゴロ/フライの比率
     probs[3] *= Math.exp(-T.vyK * lift);
@@ -1620,6 +1699,12 @@ function swingOutcome(s, batter, pitcher, type, loc, bat, fat, rng) {
   if (timing < -0.1 && timing > -0.6 && inside) { probs[6] *= 1.1; probs[8] *= 1.1; }
   const tot = sum(probs);
   const outcome = OUTCOMES[pickWeighted(probs.map((x) => x / tot), rng)];
+  // 詰まらせた: 球威の優位 P があるときの凡打の一部（確率 min(jamMax, P × jamRate)）。打球が弱くなる
+  if ((outcome === 'groundout' || outcome === 'flyout') && core.edge >= T.jamMin
+    && rng() < Math.min(T.jamMax, core.edge * T.jamRate)) {
+    info.jammed = true;
+    hint.jam = true;
+  }
   return { outcome, hint, info };
 }
 
@@ -1745,6 +1830,9 @@ function pitchCore(s, pitchInput, batInput, rng) {
   const loc = { x: loc0.x, y: loc0.y, inZone: Math.abs(loc0.x) <= 1.5 && Math.abs(loc0.y) <= 1.5 };
   if (loc0.mistake) loc.mistake = true;
   const fat = fatigue(s, pitcher);
+  // その球の実効球威（調子・特殊能力・疲労込み、投球前のスタミナで計算。失投は −mistakePower）
+  const pitchPower = r2(Math.max(1, effectiveStats(s, pitcher, { type, batter, pitcher, loc }).pitchPower
+    - (loc.mistake ? TUNING.mistakePower : 0)));
   const steal = s.pendingSteal && s.pendingSteal.side === battingSide(s) ? s.pendingSteal : null;
   s.pendingSteal = null;
   s.stealChecked = false;
@@ -1766,15 +1854,17 @@ function pitchCore(s, pitchInput, batInput, rng) {
   if (type === 'fastball' && skillOn(pitcher, 'ノビ◎', s)) event.pitch.nobi = true;
   if (loc.mistake) event.pitch.mistake = true;
   if (Number.isFinite(loc0.kmh)) event.pitch.kmh = loc0.kmh;
+  event.pitch.power = pitchPower;
 
   let outcome;
   let hint = null;
   if (!batInput) {
     outcome = loc0.hbp ? 'hbp' : loc.inZone ? 'strike' : 'ball';
   } else {
-    const r = swingOutcome(s, batter, pitcher, type, loc, batInput, fat, rng);
+    const r = swingOutcome(s, batter, pitcher, type, loc, batInput, fat, rng, pitchPower);
     outcome = r.outcome;
     hint = r.hint;
+    if (r.info.jammed) event.jammed = true;
     event.dist = r.info.dist;
     event.band = r.info.band;
     event.mode = r.info.mode;
@@ -2192,10 +2282,15 @@ function candidateBall(s, intended, batter, rng, id, hint = null) {
   let type; let D = 0; let T = 0; let exit = 0;
   switch (intended) {
     case 'groundout':
-      if (r < 0.9) { type = 'grounder'; exit = uni(rng, 80, 150); } else { type = 'liner'; D = uni(rng, 30, 55); T = uni(rng, 0.8, 1.3); }
+      if (hint?.jam) { type = 'grounder'; exit = uni(rng, TUNING.jamGrounder[0], TUNING.jamGrounder[1]); } // 詰まったボテボテのゴロ
+      else if (r < 0.9) { type = 'grounder'; exit = uni(rng, 80, 150); } else { type = 'liner'; D = uni(rng, 30, 55); T = uni(rng, 0.8, 1.3); }
       break;
     case 'flyout':
-      if (r < 0.62) { type = 'fly'; D = uni(rng, 55, 100); T = 2.6 + D / 40 + uni(rng, -0.3, 0.4); }
+      if (hint?.jam) {
+        // 詰まった内野フライ（押し負けた打球）。一部は詰まった浅い外野フライ
+        if (r < TUNING.jamPopup) { type = 'popup'; D = uni(rng, 8, 40); T = uni(rng, 3.8, 5.2); }
+        else { type = 'fly'; D = uni(rng, 48, 70); T = 2.6 + D / 40 + uni(rng, -0.3, 0.3); }
+      } else if (r < 0.62) { type = 'fly'; D = uni(rng, 55, 100); T = 2.6 + D / 40 + uni(rng, -0.3, 0.4); }
       else if (r < 0.85) { type = 'popup'; D = uni(rng, 8, 42); T = uni(rng, 4.3, 6.0); }
       else { type = 'liner'; D = uni(rng, 30, 62); T = uni(rng, 0.9, 1.4); }
       break;

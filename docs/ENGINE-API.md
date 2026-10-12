@@ -19,7 +19,8 @@ Team = {
 }
 Player += {
   positions: ['遊','二','三'],  // 守れる守備位置（先頭 = 本職 = pos）。投手は ['投']
-  pitching: { role: 'starter'|'setup'|'reliever'|'closer', velocity, control, stamina, pitches },  // 投手のみ
+  pitching: { role: 'starter'|'setup'|'reliever'|'closer', velocity, power, control, stamina, pitches },  // 投手のみ
+  //   power = 球威 1〜99（9 章。未設定のデータは球速から推定: pitchPowerOf）
   //   'setup' = セットアッパー（各チーム1人: r12 / b12 / g12 / y12。8回の勝ちパターン）
   //   pitches: [{ type, name, level }]  level = 変化量 0〜7（0 = 覚えているがほぼ曲がらない）
   model: '…',                  // 能力値のモデルにした実在選手タイプ（実名なし）
@@ -269,7 +270,9 @@ cpuSteal(state, rng?) → { state, attempted }
 stealChance(state, baseIndex) → 0..1      // 成功率の目安（UI 表示・CPU 判断用）
 swingProbabilities(…, fat, ctx?)          // 9番目の引数 ctx を追加、dist は小数可
 // NPB 準拠の追加（8 章）
-effectiveStats(state, player, ctx?) → { contact, power, trajectory, speed, arm, fielding, catching, velocity, control, stamina, condition, fatigue, mods }
+effectiveStats(state, player, ctx?) → { contact, power, trajectory, speed, arm, fielding, catching, velocity, control, stamina, pitchPower, condition, fatigue, powerFatigue, mods }
+pitchPowerOf(pitcher) → 1..99 | null   // 素の球威（9 章）
+powerRank(v) → 'S'|'A'|…|'G'            // 球威のランク（rank() と同じ区切り）
 staminaOf(state, pitcherOrId) → { pct, gauge, max, legacy }
 intentionalWalk(state, rng?) → { state, event }        // event.kind = 'ibb'
 cpuWantsIntentionalWalk(state, rng?) → boolean
@@ -312,7 +315,8 @@ PITCH_COST, PITCH_SPEED, FLIGHT_DIFFICULTY, SKILL_RENAMES
 | キレ◎ | 青 | 変化球（ストレート系以外） | strike×1.20 |
 | 奪三振 | 青 | 2ストライク | strike×1.15 |
 | 対ピンチ◎ | 青 | 得点圏 | hits×0.88, strike×1.10 |
-| 重い球 | 青 | 常時 | hr×0.70, double×0.85, go×1.10 |
+| 重い球 | 青 | 常時 | **加算** 球威+15（9 章。旧 hr×0.70・double×0.85・go×1.10 は廃止） |
+| 軽い球（新） | 赤 | 常時 | **加算** 球威−15（9 章） |
 | 打たれ強さ◎ | 青 | 走者あり | hits×0.94 |
 | 低め◎ | 青 | 球が低め（y>0.5）/ 低めを狙う | go×1.10 / 制球誤差 ×0.85（zone.y=2 を狙う時） |
 | 対左打者◎ | 青 | 左打者 | hits×0.90, strike×1.08 |
@@ -334,17 +338,17 @@ PITCH_COST, PITCH_SPEED, FLIGHT_DIFFICULTY, SKILL_RENAMES
   乱数は `rng` → `seed`（mulberry32）→ どちらも無ければ **チーム id から決まる固定シード**（同じ対戦なら同じ調子）。毎試合変えたい UI は `{ rng: Math.random }` を渡すこと。`conditions` で一部の選手を上書き。`simulateGame` は自身の rng を渡す。
 - 効果（**加算**、`effectiveStats`。`CONDITIONS[c].bat` / `.pit`）:
 
-  | 調子 | 打者 ミート・パワー | 弾道 | 投手 球速 | 制球 | スタミナ |
-  |---|---|---|---|---|---|
-  | 絶好調 | +15 | +1 | +3 km/h | +10 | +25 |
-  | 好調 | +10 | 0 | +2 | +5 | +12 |
-  | 普通 | 0 | 0 | 0 | 0 | 0 |
-  | 不調 | −10 | 0 | −2 | −5 | −8 |
-  | 絶不調 | −15 | −1 | −3 | −10 | −15 |
+  | 調子 | 打者 ミート・パワー | 弾道 | 投手 球速 | 制球 | スタミナ | 球威 |
+  |---|---|---|---|---|---|---|
+  | 絶好調 | +15 | +1 | +3 km/h | +10 | +25 | +8 |
+  | 好調 | +10 | 0 | +2 | +5 | +12 | +4 |
+  | 普通 | 0 | 0 | 0 | 0 | 0 | 0 |
+  | 不調 | −10 | 0 | −2 | −5 | −8 | −4 |
+  | 絶不調 | −15 | −1 | −3 | −10 | −15 | −8 |
 
   打者の値はパワプロ（2022 以降の検証値）、投手は独自値。走力・肩・守備・捕球は変わらない。`meetCursor`・`swingProbabilities`・`pitchLocation`・
   `chooseSwing`・バント・弾道（打球角度）はすべて実効値を使う。`mult` は旧方式の倍率で、表示と `swingProbabilities` の `ctx.batterCond / pitcherCond`（互換）にだけ使う。
-- 特殊能力の打ち消し（`activeSkills`）: **絶好調** は赤特 `三振` `チャンス×` `四球` `スロースターター` `一発` を無効化。**絶不調** は青特・金特を無効化（ただし走塁・守備系 `盗塁◎` `走塁◎` `送球◎` `キャッチャー◎` `クイック◎` `牽制◎` `バント◎` は有効のまま）。
+- 特殊能力の打ち消し（`activeSkills`）: **絶好調** は赤特 `三振` `チャンス×` `四球` `スロースターター` `一発` `軽い球` を無効化。**絶不調** は青特・金特を無効化（ただし走塁・守備系 `盗塁◎` `走塁◎` `送球◎` `キャッチャー◎` `クイック◎` `牽制◎` `バント◎` は有効のまま）。
 
 ### 7.4 ミートカーソル（連続座標の打撃入力）
 
@@ -422,7 +426,8 @@ CPU（`chooseSwing`）は `{ zone, pos, mode, timing }` を返す。`pos = 実�
 effectiveStats(state, player, { batter?, pitcher?, type?, loc?, condition?: false, skills?: false, fatigue?: false })
 → { contact, power, trajectory, speed, arm, fielding, catching,      // 野手（投手の打撃も）
     velocity, control, stamina,                                      // 投手のみ（野手は null）。velocity は km/h
-    condition: '絶好調'|…, fatigue: 0..1,
+    pitchPower,                                                      // 投手のみ: 実効球威（9 章）。power は打撃のパワーのまま
+    condition: '絶好調'|…, fatigue: 0..1, powerFatigue: 0..1,       // powerFatigue = 球威の疲労（スタミナ 50% 未満）
     mods: [{ source: '絶好調'|'チャンス◎'|'疲労'|…, add: { contact: 15, … } }] }   // UI の「ミート+15」表示用
 ```
 
@@ -436,7 +441,7 @@ effectiveStats(state, player, { batter?, pitcher?, type?, loc?, condition?: fals
 
 `pitchLocation` で確率 `p = 0.04 + 0.08 × (1 − 実効制球/99)`（`TUNING.mistakeBase / mistakeK`）、赤特 **一発 ×2**、青特 **失投回避 ×0.5**、
 疲労で最大 ×2。失投は狙いが真ん中へ寄り（狙い ×0.25 ＋ σ0.3）、変化は半分、制球誤差なし。結果に `loc.mistake = true`。
-`pitchContact` は `pitchInput.loc.mistake` を引き継ぎ **`event.pitch.mistake = true`**。打撃判定では見切りやすく（d −0.08）、本塁打 ×1.3。
+`pitchContact` は `pitchInput.loc.mistake` を引き継ぎ **`event.pitch.mistake = true`**。打撃判定では見切りやすく（d −0.08）、本塁打 ×1.3、球威 −20（9 章）。
 CPU 同士で 約 6% / 球。
 
 ### 8.3 死球（kind `'hbp'`）
@@ -550,3 +555,63 @@ PITCH_SPEED = { fastball 1.0, twoseam .97, cutter .95, slider .89, curve .80, fo
 - 打者の一塁到達 4.1〜4.6 秒（走力順）。併殺の中継 `pivot 1.2`。エラー率 `errBase 0.026`（約 0.8 個 / 試合）。
 - `tests/balance.mjs [1カードの試合数] [先攻-後攻 ...]`: 複数カードを回し、全項目（得点〜先発の球数、打率・出塁率・長打率、盗塁成功率、敬遠、失投率）を表示。
   `gameStats` / `runBalance` / `TARGETS` を export。
+
+## 9. 球威（pitching.power / effectiveStats().pitchPower）
+
+**球威 = 打者が芯で捉えにくい「球の重さ」**。球速（velocity）が「空振りを取る力」なのに対し、球威は「当てられても押し返す力」で、
+バットに当たった後の結果を **強い当たり → 詰まった当たり** へずらす。球速と相関するが別物（148 km/h のシンカー投手でも球威は高く、
+回転の綺麗な“伸びる”152 km/h の直球は空振りは取れても球威は控えめ。各投手の値は docs/ROSTER-HOMAGE.md）。
+
+### 9.1 データと実効値
+
+- `player.pitching.power`（1〜99、全 24 投手）。未設定（チームエディタの旧データなど）は `pitchPowerOf(p)` が球速から推定: `50 + (km/h − 145) × 1.5`（30〜80）。
+- `effectiveStats(state, pitcher).pitchPower`（小数 1 桁、1〜110）＝ 素の球威 ＋ 調子（+8/+4/0/−4/−8）＋ 特殊能力（**重い球 +15**、**軽い球 −15**）
+  − 疲労（スタミナ残り 50% 未満で `20 × (50 − 残り%) / 50`、残り 0% で −20。`mods` に `'疲労（球威）'`、`powerFatigue` 0〜1）。
+  ※ `power` は従来どおり**打撃のパワー**（投手も打席に立つため。UI の `{ ...player, ...effectiveStats() }` が壊れないよう別名 `pitchPower` にした）。
+- **失投**はその球の球威 −20（`TUNING.mistakePower`）。
+- `event.pitch.power` = その球の実効球威（投球前のスタミナで計算、失投込み）。見送り・ボールでも入る。
+- `powerRank(v)` = 球威のランク（`rank()` と同じ: 90 S / 80 A / 70 B / 60 C / 50 D / 40 E / 20 F / それ未満 G）。
+
+### 9.2 打撃結果への効果（`swingProbabilities`）
+
+```
+w = (実効球威 − 50) / 49                 // 球威 99 → +1.0、50 → 0、30 → −0.41
+b = clamp((打者の実効パワー − 50) / 49, 0, 1)
+P = w > 0 ? w × (1 − 0.5 × b) : w        // 球威の優位。パワー 99 の打者は優位を半分打ち消す（押し負けない）
+重み × exp(係数 × P)  → 正規化
+```
+
+| 結果 | 係数（`TUNING`） | P = +1（球威 99 対 パワー 50） | P = −0.41（球威 30） |
+|---|---|---|---|
+| 本塁打 | `powerHr −0.55` | ×0.58 | ×1.25 |
+| 二塁打・三塁打 | `powerXbh −0.40` | ×0.67 | ×1.18 |
+| 単打 | `powerSingle −0.12` | ×0.89 | ×1.05 |
+| ゴロアウト | `powerGo +0.10` | ×1.11 | ×0.96 |
+| フライアウト（内野フライ） | `powerFo +0.15` | ×1.16 | ×0.94 |
+| ファウル | `powerFoul +0.10` | ×1.11 | ×0.96 |
+| 空振り | `powerStrike +0.05`（小さい。空振りの主役は球速・ノビ◎・キレ◎） | ×1.05 | ×0.98 |
+
+`ctx.pitchPower` でその球の球威を直接渡せる（省略時は `effectiveStats`、`ctx.state` があれば疲労込み、`loc.mistake` なら −20）。
+
+### 9.3 詰まらせた（`event.jammed`）と打球速度
+
+- スイングの結果が **ゴロアウト / フライアウト** で `P ≥ 0.1` のとき、確率 `min(0.6, 0.6 × P)` で **詰まった当たり**: `event.jammed = true`
+  （UI の実況「詰まらせた！」用。`pitchContact` の inplay イベントと `resolveBattedBall` の最終イベントの両方に残る）。
+- 詰まった打球は弱い: ゴロは **ボテボテ 70〜105 km/h**（通常 80〜150）、フライアウトは 80% が **内野フライ**（残りは浅い外野フライ）。
+  → 球威が高いほど `ball.exitSpeed` の平均が下がる。
+- 実測（ど真ん中のストレートを 8000 回スイング、ミート 65・パワー 60 の打者、`tests/power.test.mjs` と同条件）:
+
+  | 球威 | 安打/打球 | 長打/打球 | 本塁打/打球 | 平均打球速度 | 詰まらせた/打球 |
+  |---|---|---|---|---|---|
+  | 30 | 38.4% | 8.9% | 1.9% | 123.6 km/h | 0% |
+  | 50 | 37.0% | 8.3% | 1.3% | 123.5 km/h | 0% |
+  | 75 | 32.5% | 5.9% | 1.2% | 117.5 km/h | 17% |
+  | 99 | 29.8% | 5.3% | 1.2% | 111.1 km/h | 37% |
+  | 99（パワー 99 の打者） | 31.3% | 8.2% | 2.1% | 116.4 km/h | 19% |
+
+### 9.4 特殊能力との関係
+
+- **重い球**（青）= 球威 +15 の加算だけ（旧来の hr×0.70・double×0.85・go×1.10 の倍率は廃止＝二重に数えない）。絶不調で無効。
+- **軽い球**（赤、新規）= 球威 −15。絶好調で打ち消される。現在のロースターに所持者はいない（チームエディタ用）。
+- **剛球無双**（金）は従来どおりの倍率（strike×1.20, hits×0.88, hr×0.60）で、球威とは別に効く（所持者 b13・g11 は球威自体も高い）。
+

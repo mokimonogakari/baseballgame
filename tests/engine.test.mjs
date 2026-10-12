@@ -181,3 +181,4 @@ import './subs-fielding.test.mjs';
 import './powerpro.test.mjs';
 import './systems.test.mjs';
 import './challenge.test.mjs';
+import './power.test.mjs';
