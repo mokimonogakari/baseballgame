@@ -446,40 +446,65 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .chibi-pitcher.lefty .pt-glove{left:.45em}
 .pt-ball{position:absolute;left:50%;bottom:-.7em;width:.9em;height:.9em;margin-left:-.45em;background:#fff;border:2px solid var(--navy);border-radius:50%;opacity:0}
 .pt-mitt{position:absolute;left:50%;bottom:-.8em;width:1.4em;height:1.2em;margin-left:-.7em;background:#B5651D;border:3px solid var(--navy);border-radius:.6em .6em .5em .5em}
+/* セット → 足を高く上げる（体は三塁側へ溜める）→ 捕手方向へ踏み出す（体が沈む）→ 腕をしならせてリリース → フォロースルー。
+   --d で左右反転。足: 右投げは画面右（:last-child）が踏み出す足、左（:first-child）が軸足 */
 .chibi-pitcher.windup .pt-throw{animation:pt-throw-wu var(--wu,650ms) linear forwards}
 .chibi-pitcher.windup .pt-glove{animation:pt-glove-wu var(--wu,650ms) linear forwards}
 .chibi-pitcher.windup .pt-ball{opacity:1}
-.chibi-pitcher.windup .chibi-legs>i:last-child{animation:pt-leg-wu var(--wu,650ms) ease-in-out forwards}
-.chibi-pitcher.lefty.windup .chibi-legs>i:last-child{animation:none}
-.chibi-pitcher.lefty.windup .chibi-legs>i:first-child{animation:pt-leg-wu var(--wu,650ms) ease-in-out forwards}
+.chibi-pitcher.windup .chibi-legs>i:last-child,.chibi-pitcher.lefty.windup .chibi-legs>i:first-child{animation:pt-leg-wu var(--wu,650ms) ease-in-out forwards}
+.chibi-pitcher.windup .chibi-legs>i:first-child,.chibi-pitcher.lefty.windup .chibi-legs>i:last-child{animation:pt-pivot-wu var(--wu,650ms) ease-in-out forwards}
 .chibi-pitcher.windup .chibi-head,.chibi-pitcher.windup .chibi-body{animation:pt-body-wu var(--wu,650ms) ease-in-out forwards}
 .chibi-pitcher.follow .pt-throw{animation:pt-throw-fo .3s ease-out forwards}
 .chibi-pitcher.follow .pt-glove{animation:pt-glove-fo .3s ease-out forwards}
 .chibi-pitcher.follow .chibi-head,.chibi-pitcher.follow .chibi-body{animation:pt-body-fo .3s ease-out forwards}
+.chibi-pitcher.follow .chibi-legs>i:last-child,.chibi-pitcher.lefty.follow .chibi-legs>i:first-child{animation:pt-leg-fo .3s ease-out forwards}
+.chibi-pitcher.follow .chibi-legs>i:first-child,.chibi-pitcher.lefty.follow .chibi-legs>i:last-child{animation:pt-pivot-fo .3s ease-out forwards}
+.chibi-legs>i{transform-origin:50% 0}
 @keyframes pt-throw-wu{
   0%{transform:rotate(calc(var(--d) * 18deg))}
-  28%{transform:rotate(calc(var(--d) * 165deg))}
-  58%{transform:rotate(calc(var(--d) * 105deg))}
-  84%{transform:rotate(calc(var(--d) * 195deg))}
-  100%{transform:rotate(calc(var(--d) * 245deg)) scaleY(.72)}}
+  16%,46%{transform:rotate(calc(var(--d) * -38deg))}
+  64%{transform:rotate(calc(var(--d) * 70deg))}
+  82%{transform:rotate(calc(var(--d) * 150deg))}
+  100%{transform:rotate(calc(var(--d) * 232deg)) scaleY(.74)}}
 @keyframes pt-glove-wu{
   0%{transform:rotate(calc(var(--d) * -18deg))}
-  28%{transform:rotate(calc(var(--d) * -160deg))}
-  58%{transform:rotate(calc(var(--d) * -115deg))}
-  84%{transform:rotate(calc(var(--d) * -80deg))}
-  100%{transform:rotate(calc(var(--d) * -35deg))}}
+  16%,46%{transform:rotate(calc(var(--d) * 38deg))}
+  64%{transform:rotate(calc(var(--d) * -70deg))}
+  82%{transform:rotate(calc(var(--d) * -100deg))}
+  100%{transform:rotate(calc(var(--d) * -40deg))}}
 @keyframes pt-leg-wu{
-  0%,22%{transform:translate(0,0)}
-  55%{transform:translate(-.2em,-1.4em) rotate(-24deg)}
-  80%{transform:translate(.1em,-.4em) rotate(-6deg)}
-  100%{transform:translate(.3em,0)}}
-@keyframes pt-body-wu{0%{transform:translateY(0)}55%{transform:translateY(-.3em)}100%{transform:translateY(.35em) scale(1.04)}}
+  0%,16%{transform:none}
+  44%{transform:translate(calc(var(--d) * -.6em),-2.3em) rotate(calc(var(--d) * -38deg))}
+  56%{transform:translate(calc(var(--d) * -.4em),-2em) rotate(calc(var(--d) * -30deg))}
+  76%{transform:translate(calc(var(--d) * .7em),-.5em) rotate(calc(var(--d) * -8deg))}
+  88%,100%{transform:translate(calc(var(--d) * 1em),.3em) scaleY(1.1)}}
+@keyframes pt-pivot-wu{
+  0%,16%{transform:none}
+  44%{transform:translateY(-.15em)}
+  80%{transform:translate(calc(var(--d) * -.1em),.1em) rotate(calc(var(--d) * 8deg))}
+  100%{transform:translate(calc(var(--d) * .2em),-.1em) rotate(calc(var(--d) * 16deg))}}
+@keyframes pt-body-wu{
+  0%{transform:none}
+  16%{transform:translateY(.12em)}
+  44%{transform:translate(calc(var(--d) * -.35em),-.45em) rotate(calc(var(--d) * -6deg))}
+  56%{transform:translate(calc(var(--d) * -.4em),-.4em) rotate(calc(var(--d) * -7deg))}
+  82%{transform:translate(calc(var(--d) * .3em),.25em) rotate(calc(var(--d) * 3deg))}
+  100%{transform:translate(calc(var(--d) * .5em),.5em) rotate(calc(var(--d) * 7deg)) scale(1.05)}}
 @keyframes pt-throw-fo{
-  0%{transform:rotate(calc(var(--d) * 245deg)) scaleY(.72)}
-  55%{transform:rotate(calc(var(--d) * 330deg))}
+  0%{transform:rotate(calc(var(--d) * 232deg)) scaleY(.74)}
+  40%{transform:rotate(calc(var(--d) * 330deg)) scaleY(.9)}
+  70%{transform:rotate(calc(var(--d) * 400deg))}
   100%{transform:rotate(calc(var(--d) * 378deg))}}
-@keyframes pt-glove-fo{0%{transform:rotate(calc(var(--d) * -35deg))}100%{transform:rotate(calc(var(--d) * -18deg))}}
-@keyframes pt-body-fo{0%{transform:translateY(.35em) scale(1.04)}100%{transform:translateY(0)}}
+@keyframes pt-glove-fo{0%{transform:rotate(calc(var(--d) * -40deg))}45%{transform:rotate(calc(var(--d) * 10deg))}100%{transform:rotate(calc(var(--d) * -18deg))}}
+@keyframes pt-body-fo{
+  0%{transform:translate(calc(var(--d) * .5em),.5em) rotate(calc(var(--d) * 7deg)) scale(1.05)}
+  40%{transform:translate(calc(var(--d) * .6em),.85em) rotate(calc(var(--d) * 11deg)) scale(1.08)}
+  100%{transform:none}}
+@keyframes pt-leg-fo{0%,55%{transform:translate(calc(var(--d) * 1em),.3em) scaleY(1.1)}100%{transform:none}}
+@keyframes pt-pivot-fo{
+  0%{transform:translate(calc(var(--d) * .2em),-.1em) rotate(calc(var(--d) * 16deg))}
+  45%{transform:translate(calc(var(--d) * .7em),-1.1em) rotate(calc(var(--d) * -40deg))}
+  100%{transform:none}}
 
 /* 当たりの質: 擬音テロップ（真芯 > 芯 > その他 / ファウル）と火花の大きさ */
 .shin-flash.tier-core{font-size:72px;color:#FFE14D;text-shadow:4px 4px 0 #E5484D,-3px -3px 0 #1C2B4B,3px -3px 0 #1C2B4B,-3px 3px 0 #1C2B4B,0 0 24px rgba(255,255,255,.9)}
@@ -595,3 +620,114 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
   body:not(.touch) .game>.mini-btns{transform:scale(.8);transform-origin:right bottom;bottom:140px;opacity:.7;transition:opacity .15s}
   body:not(.touch) .game>.dpad:hover,body:not(.touch) .game>.action-btns:hover,body:not(.touch) .game>.mini-btns:hover{opacity:1}
 }
+
+/* =========================================================
+   試合画面の仕上げ（2026-11）: カウント表示・縮むリング・結果コール
+   ========================================================= */
+/* ヘッダー: カウント（B/S/O）とランナーをひとまとまりの「状況」ブロックに */
+.hteam{min-width:300px}
+.gh-sit{display:flex;align-items:center;gap:12px;padding:4px 12px 4px 6px;background:#0E1830;border:2px solid #34476E;border-radius:14px;flex:none}
+.count-box{display:grid;grid-auto-rows:17px;row-gap:3px;padding:2px 2px}
+.cb-row{display:flex;align-items:center;gap:6px}
+.cb-row>b{width:16px;font-size:17px;font-weight:900;line-height:1;text-align:center;letter-spacing:0}
+.cb-b>b{color:#6EE07A}.cb-s>b{color:#FFD54A}.cb-o>b{color:#FF7376}
+.cb-row>span{display:flex;gap:5px}
+.cl{display:block;width:16px;height:16px;border-radius:50%;background:#26365A;box-shadow:inset 0 2px 3px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.08);transition:background-color .15s,box-shadow .15s}
+.cl.on-b{background:radial-gradient(circle at 35% 30%,#D4FFD8 0 12%,#4CD75A 45%,#2E9A3A 100%);box-shadow:0 0 8px 1px rgba(76,215,90,.75)}
+.cl.on-s{background:radial-gradient(circle at 35% 30%,#FFFBE0 0 12%,#FFD54A 45%,#E0A800 100%);box-shadow:0 0 8px 1px rgba(255,213,74,.75)}
+.cl.on-o{background:radial-gradient(circle at 35% 30%,#FFE0E0 0 12%,#FF5257 45%,#C62828 100%);box-shadow:0 0 8px 1px rgba(255,82,87,.75)}
+.gh-sit .runners{transform:none}
+body.compact .gh-sit{padding:3px 10px 3px 6px;gap:12px}
+body.compact .count-box{grid-auto-rows:20px;row-gap:2px;padding:0}
+body.compact .cb-row>b{font-size:20px;width:18px}
+body.compact .cl{width:19px;height:19px}
+body.compact .cb-row>span{gap:4px}
+body.compact .gh-sit .runners{transform:scale(1.1)}
+
+/* 手動投球の縮むリング: 実況の帯より手前に出し、帯は薄くしてリングを読みやすく */
+.windup-ring{z-index:8}
+.game>.ticker{transition:opacity .15s}
+.game.ring-on>.ticker{opacity:.28}
+
+/* 結果コール: スタンプのように飛び込む（表示時間は従来どおり）。色は結果の系統で */
+.overlay::before{content:"";position:absolute;left:0;right:0;top:50%;height:150px;margin-top:-82px;z-index:-1;opacity:0;transform:scaleX(0) skewY(-3deg);
+  background:linear-gradient(90deg,rgba(14,24,48,0),rgba(14,24,48,.72) 22%,rgba(14,24,48,.72) 78%,rgba(14,24,48,0));transition:transform .22s cubic-bezier(.2,.9,.3,1),opacity .15s}
+.overlay.show::before{opacity:1;transform:scaleX(1) skewY(-3deg)}
+.overlay.is-light::before,.overlay.is-sub::before,.overlay.hr-caption::before{display:none}
+.overlay-big{line-height:1.15;white-space:nowrap}
+.overlay.show .overlay-big{animation:ov-stamp .34s cubic-bezier(.2,1.2,.4,1) both}
+.overlay.show.is-light .overlay-big{animation:ov-pop .22s ease-out both}
+.overlay.show .overlay-sub{animation:ov-sub .3s .1s ease-out both}
+@keyframes ov-stamp{0%{opacity:0;transform:scale(2.3) rotate(-7deg)}45%{opacity:1;transform:scale(.9) rotate(-2deg)}70%{transform:scale(1.06) rotate(0)}100%{opacity:1;transform:none}}
+@keyframes ov-pop{0%{opacity:0;transform:scale(.7)}60%{opacity:1;transform:scale(1.08)}100%{opacity:1;transform:scale(1)}}
+@keyframes ov-sub{0%{opacity:0;transform:translateY(14px)}100%{opacity:1;transform:none}}
+/* 安打・エラー: 黄 × 赤の縁 */
+.overlay.r-hit::before{background:linear-gradient(90deg,rgba(229,72,77,0),rgba(229,72,77,.82) 22%,rgba(229,72,77,.82) 78%,rgba(229,72,77,0))}
+.overlay.r-hit .overlay-big{color:#FFE14D;text-shadow:5px 5px 0 #8E1B20,-3px -3px 0 #1C2B4B,3px -3px 0 #1C2B4B,-3px 3px 0 #1C2B4B,3px 3px 0 #1C2B4B}
+/* アウト: 白 × 青 */
+.overlay.r-out::before{background:linear-gradient(90deg,rgba(30,136,229,0),rgba(30,100,200,.8) 22%,rgba(30,100,200,.8) 78%,rgba(30,136,229,0))}
+.overlay.r-out .overlay-big{color:#fff;text-shadow:5px 5px 0 #0D3C7A,-3px -3px 0 #1C2B4B,3px -3px 0 #1C2B4B,-3px 3px 0 #1C2B4B,3px 3px 0 #1C2B4B}
+/* 三振: 白 × 紺、少し大きく */
+.overlay.r-k::before{background:linear-gradient(90deg,rgba(14,24,48,0),rgba(14,24,48,.85) 22%,rgba(14,24,48,.85) 78%,rgba(14,24,48,0))}
+.overlay.r-k .overlay-big{font-size:112px;color:#fff;text-shadow:5px 5px 0 #E5484D,-3px -3px 0 #1C2B4B,3px -3px 0 #1C2B4B,-3px 3px 0 #1C2B4B,3px 3px 0 #1C2B4B}
+/* 四死球: 緑 */
+.overlay.r-walk::before{background:linear-gradient(90deg,rgba(46,154,58,0),rgba(46,154,58,.78) 22%,rgba(46,154,58,.78) 78%,rgba(46,154,58,0))}
+.overlay.r-walk .overlay-big{color:#fff;text-shadow:5px 5px 0 #1B5E20,-3px -3px 0 #1C2B4B,3px -3px 0 #1C2B4B,-3px 3px 0 #1C2B4B,3px 3px 0 #1C2B4B}
+/* 1 球ごとのコール（ボール・ストライク・ファウル）は控えめに */
+.overlay.is-light .overlay-big{font-size:76px}
+.overlay.r-ball .overlay-big{color:#9BF0A4}
+.overlay.r-strike .overlay-big{color:var(--accent)}
+.overlay.r-foul .overlay-big{color:#fff}
+/* ホームラン: 金 */
+.overlay.r-hr .overlay-big{color:#FFC928;font-size:116px;text-shadow:6px 6px 0 #B36B00,-3px -3px 0 #1C2B4B,3px -3px 0 #1C2B4B,-3px 3px 0 #1C2B4B,3px 3px 0 #1C2B4B,0 0 30px rgba(255,214,90,.9)}
+.overlay.r-hr::before{background:linear-gradient(90deg,rgba(255,170,0,0),rgba(255,170,0,.55) 22%,rgba(255,170,0,.55) 78%,rgba(255,170,0,0))}
+.overlay.r-hr.hr-caption .overlay-big{animation:hr-zoom .5s cubic-bezier(.2,1.4,.4,1) both}
+body.compact .overlay.is-light .overlay-big{font-size:88px}
+/* 投手パネルの球種リスト: 他画面の .pitch-list 定義に引きずられないよう試合画面側で固定 */
+.game .panel .pitch-list{display:grid;grid-template-columns:1fr 1fr;gap:5px;flex-wrap:nowrap}
+
+/* =========================================================
+   野球らしい動き（2026-11）: 捕手のミット・投球の縫い目と回転・打者の始動・走り出し
+   ========================================================= */
+/* 捕手のミット（ゾーンの奥に構え、到達直前に変化へ寄せ、捕球で「パン」） */
+.c-mitt{width:60px;height:54px;margin:-27px 0 0 -30px;border-radius:46% 46% 40% 40%;background:radial-gradient(circle at 46% 42%,#D08A44,#A0602A 68%,#8A4F1F);border:4px solid var(--navy);
+  box-shadow:inset 0 -5px 0 rgba(0,0,0,.2),0 3px 0 rgba(14,24,48,.35);z-index:3;opacity:0;transform:scale(.82);transition:opacity .15s,transform .15s;pointer-events:none}
+.c-mitt.on{opacity:.94;transform:scale(1)}
+.c-mitt.move{transition:opacity .15s,transform .15s,left .11s ease-out,top .11s ease-out}
+.c-mitt>i{position:absolute;display:block}
+.cm-web{left:13px;right:13px;top:-10px;height:15px;border:3px solid var(--navy);border-bottom:0;border-radius:7px 7px 2px 2px;background:repeating-linear-gradient(90deg,#7A4318 0 3px,#C98440 3px 7px)}
+.cm-pocket{left:13px;top:11px;width:26px;height:22px;border-radius:50%;background:radial-gradient(circle at 50% 40%,#6E3A12,#8A4F1F 70%);box-shadow:inset 0 2px 0 rgba(0,0,0,.25)}
+.cm-thumb{left:-11px;top:12px;width:17px;height:28px;border-radius:9px;background:#B06A2E;border:3px solid var(--navy);transform:rotate(-14deg)}
+.c-mitt::after{content:"";position:absolute;left:50%;top:44%;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;border:3px solid #fff;opacity:0;pointer-events:none}
+.c-mitt.pop{animation:mitt-pop .26s ease-out}
+.c-mitt.pop::after{animation:mitt-ring .32s ease-out}
+@keyframes mitt-pop{0%{transform:scale(1)}30%{transform:translateY(5px) scale(.9,.84)}100%{transform:scale(1)}}
+@keyframes mitt-ring{0%{opacity:.9;transform:scale(.6)}100%{opacity:0;transform:scale(2.1)}}
+/* 投球: 赤い縫い目（回転が見える） */
+.ball{background:radial-gradient(circle at -34% 50%,transparent 64%,#E5484D 66% 74%,transparent 76%),radial-gradient(circle at 134% 50%,transparent 64%,#E5484D 66% 74%,transparent 76%),#fff}
+/* 打者: 始動中は待機の揺れを止める */
+.chibi-batter.loading .bt-rig{animation:none}
+/* 打球が前に飛んだ: バットを落として一塁へ走り出す */
+[data-ref="batter-wrap"].run-out{animation:bt-run .95s cubic-bezier(.45,.05,.6,1) forwards}
+@keyframes bt-run{
+  0%{transform:none;opacity:1}
+  18%{transform:translate(40px,-16px)}
+  34%{transform:translate(96px,-24px)}
+  50%{transform:translate(160px,-46px)}
+  66%{transform:translate(224px,-54px);opacity:1}
+  82%{transform:translate(290px,-78px);opacity:.75}
+  100%{transform:translate(360px,-96px);opacity:0}}
+.chibi-batter.drop-bat [data-bt="batw"]{animation:bat-drop .5s ease-in forwards}
+@keyframes bat-drop{0%{transform:translate(106px,52px);opacity:1}45%{transform:translate(70px,150px) rotate(80deg);opacity:1}100%{transform:translate(64px,156px) rotate(86deg);opacity:0}}
+.chibi-batter.drop-bat .bt-rig{animation:bt-lean .95s ease-out forwards}
+.chibi-batter.lefty.drop-bat .bt-rig{animation-name:bt-lean-l}
+@keyframes bt-lean{0%{transform:none}25%,100%{transform:rotate(9deg)}}
+@keyframes bt-lean-l{0%{transform:none}25%,100%{transform:rotate(-9deg)}}
+.chibi-batter.drop-bat .bt-leg-f{animation:bt-stride .24s ease-in-out infinite alternate}
+.chibi-batter.drop-bat .bt-leg-b{animation:bt-stride .24s ease-in-out infinite alternate-reverse}
+@keyframes bt-stride{from{transform:rotate(-26deg)}to{transform:rotate(22deg)}}
+/* 投手のフォロースルーで体ごと沈み込む */
+.chibi-pitcher.follow{animation:pt-lunge .3s ease-out}
+@keyframes pt-lunge{0%{translate:0 0}40%{translate:0 5px}100%{translate:0 0}}
+/* スマホ横: 「球種 球速」テロップが右下の X ボタンに重ならないよう左へ寄せる */
+body.touch.compact .pitch-info{left:auto;right:248px}
