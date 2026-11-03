@@ -35,7 +35,7 @@
 .tt-sub small,.tt-help small{font-size:21px;font-weight:700;color:var(--muted);line-height:1.15}
 .tt-sub:active,.tt-help:active{transform:translateY(3px);box-shadow:0 2px 0 var(--navy)}
 
-.title .hero{left:920px;top:150px;z-index:2}
+.title .hero{left:930px;top:168px;z-index:2}
 .tt-help{position:absolute;left:880px;top:430px;width:352px;height:92px;z-index:3;background:var(--navy);color:#fff}
 .tt-help b{color:var(--accent)}
 .tt-help small{color:var(--muted-light)}
