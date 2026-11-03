@@ -114,3 +114,45 @@
 .opp-go{flex:1;background:var(--accent)}
 .opp-help{margin:10px 0 0;font-size:13px;font-weight:700;color:var(--muted)}
 .te-meter-note{margin-left:8px;font-size:14px;font-weight:800;color:var(--muted-light)}
+/* ---- チーム画面: 選手カード ---- */
+.face-box{width:124px;height:124px;padding-top:22px;align-items:flex-start;--chibi:.85;background:linear-gradient(#8EC8F5,#BFE0FA)}
+.face-box .chibi{height:auto;overflow:visible}
+.face-box .chibi>*{flex:none}
+.face-box .chibi-arm,.face-box .chibi-legs{display:none}
+.face-box .chibi-head{box-shadow:0 3px 0 rgba(0,0,0,.08)}
+.face-box .chibi-eye{top:2.7em}
+.face-box .chibi-brim{display:none}
+.face-box .chibi-cheek{top:3.7em}
+.face-box .chibi-mouth{top:3.95em}
+.mvp .face .chibi>*{flex:none}
+.mvp .face .chibi{height:auto}
+.card-extra{margin-top:10px;display:flex;flex-direction:column;gap:8px;max-height:calc(100% - 0px)}
+.ex-sec h4{margin:0 0 4px;font-size:13px;font-weight:900;color:var(--muted);letter-spacing:2px}
+.pitch-list{display:flex;flex-wrap:wrap;gap:6px 8px}
+.pitch{display:inline-flex;align-items:center;gap:8px;background:#F3F6FB;border-radius:10px;padding:4px 10px;font-size:14px;font-weight:900}
+.pips{display:inline-flex;gap:2px}
+.pips i{width:7px;height:12px;border-radius:2px;background:#D6DEEB}
+.pips i.on{background:var(--accent);box-shadow:inset 0 -2px 0 rgba(0,0,0,.18)}
+.sk-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr;gap:4px}
+.sk-list li{display:flex;align-items:center;gap:10px;background:#F3F6FB;border-radius:10px;padding:3px 10px;min-height:30px}
+.sk-name{flex:none;min-width:130px;font-size:14px;font-weight:900;padding:1px 10px;border-radius:999px;background:var(--accent);color:var(--navy);text-align:center;white-space:nowrap}
+.sk-red .sk-name{background:#E5484D;color:#fff}
+.sk-blue .sk-name{background:#3B82E0;color:#fff}
+.sk-gold .sk-name{background:var(--accent);color:var(--navy)}
+.sk-desc{font-size:14px;font-weight:700;color:var(--navy);min-width:0}
+.sk-list.two{grid-template-columns:1fr 1fr;gap:4px 6px}
+.sk-list.two li{gap:6px;padding:3px 8px;align-items:center}
+.sk-list.two .sk-name{min-width:0;font-size:13px;padding:1px 8px}
+.sk-list.two .sk-desc{font-size:12px;line-height:1.25}
+/* カード: 下部の特能欄は残り高さの中でスクロール（ボタンと重ならない） */
+.player-card{display:flex;flex-direction:column}
+.player-card>*{flex:none}
+.player-card .card-actions{position:static;margin-top:10px}
+.player-card .card-extra{flex:1 1 0;min-height:0;overflow-y:auto;margin-top:8px;padding-bottom:4px;scrollbar-width:thin;touch-action:pan-y;overscroll-behavior:contain}
+.pitch{padding:3px 8px;gap:6px;font-size:13px}
+.pitch-list{gap:4px 6px}
+.roster-head span{white-space:nowrap}
+body.compact .player-card .card-actions{margin-top:6px}
+.mvp .face{padding-top:26px;background:linear-gradient(#8EC8F5,#BFE0FA)}
+.mvp .face .chibi-brim{display:none}
+.mvp .face .chibi{overflow:visible}

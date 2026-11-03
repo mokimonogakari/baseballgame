@@ -1,4 +1,4 @@
-import { rank, RANK_COLORS } from './data.js';
+import { rank, RANK_COLORS, SKILLS } from './data.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -59,7 +59,7 @@ export function renderTeam(el, ctx) {
   const sel = list.find((p) => p.id === selectedId);
 
   const head = showPitchers
-    ? ['順', '名前', '球速', 'コントロール', 'スタミナ', '球種数']
+    ? ['順', '名前', '球速', '制球', 'スタミナ', '球種数']
     : ['順', '名前', '弾道', 'ミート', 'パワー', '走力'];
   const rows = list.map((p, i) => {
     const cells = showPitchers
@@ -102,6 +102,22 @@ export function renderTeam(el, ctx) {
   if (pl) pl.onclick = () => ctx.go('game');
 }
 
+/** カード下部: 投手は球種、全員の特能と一言説明 */
+function extraHTML(p) {
+  const pi = p.pitching;
+  const pips = (lv) => Array.from({ length: 7 }, (_, i) => `<i${i < lv ? ' class="on"' : ''}></i>`).join('');
+  const pitches = pi && pi.pitches && pi.pitches.length
+    ? `<div class="ex-sec"><h4>球種</h4><div class="pitch-list">${pi.pitches.map((q) =>
+      `<span class="pitch"><b>${esc(q.name)}</b><span class="pips" title="変化量 ${esc(q.level)}">${pips(q.level || 0)}</span></span>`).join('')}</div></div>`
+    : '';
+  const sk = (p.skills || []).map((n) => {
+    const d = SKILLS[n];
+    return `<li class="sk-${d ? d.type : 'blue'}"><span class="sk-name">${esc(n)}</span><span class="sk-desc">${esc(d ? d.desc : '')}</span></li>`;
+  }).join('');
+  const skills = sk ? `<div class="ex-sec"><h4>特殊能力</h4><ul class="sk-list${(p.skills || []).length > 2 ? ' two' : ''}">${sk}</ul></div>` : '';
+  return pitches || skills ? `<div class="card-extra">${pitches}${skills}</div>` : '';
+}
+
 function cardHTML(p, team) {
   const ov = overallOf(p);
   const pi = p.pitching;
@@ -130,6 +146,7 @@ function cardHTML(p, team) {
     <div class="ability-grid">${tileHTML}</div>
     <div class="legend">${legend}</div>
     <div class="stat-tiles">${stats.map(([l, k]) => `<div class="stat-tile"><div class="lbl">${l}</div><div class="val">${sv(k)}</div></div>`).join('')}</div>
+    ${extraHTML(p)}
     <div class="card-actions">
       <button class="btn" data-act="switch">チームを切り替え</button>
       <button class="btn primary" data-act="play">このチームで試合</button>
