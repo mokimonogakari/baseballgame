@@ -19,7 +19,7 @@
 /* ---- 選手トークン（ミニちびキャラ） ---- */
 .fv-tok{--team:#1E88E5;width:30px;height:40px;margin:-40px 0 0 -15px;transform-origin:15px 40px;will-change:transform}
 .fv-tok-ring{position:absolute;left:-5px;bottom:-6px;width:40px;height:13px;border-radius:50%;background:rgba(0,0,0,.22)}
-.fv-tok-fig{position:absolute;left:0;top:0;width:30px;height:40px;transform-origin:15px 36px;transition:transform .12s}
+.fv-tok-fig{position:absolute;left:0;top:0;width:30px;height:40px;transform-origin:15px 36px;transform:scaleX(var(--face,1));transition:transform .12s}
 .fv-tok-head{position:absolute;left:4px;top:3px;width:22px;height:20px;background:#FFE8D1;border:2px solid #1C2B4B;border-radius:52% 52% 46% 46%;z-index:2;box-sizing:border-box}
 .fv-tok-cap{position:absolute;left:-3px;right:-3px;top:-5px;height:11px;background:var(--team);border:2px solid #1C2B4B;border-radius:12px 12px 3px 3px}
 .fv-tok-eye{position:absolute;top:9px;width:3px;height:5px;background:#1C2B4B;border-radius:50%}
@@ -32,15 +32,70 @@
 .fv-run .fv-tok-legs>i:first-child{animation:fv-leg .22s linear infinite alternate}
 .fv-run .fv-tok-legs>i:last-child{animation:fv-leg .22s linear infinite alternate-reverse}
 .fv-run .fv-tok-fig{animation:fv-bob .22s ease-in-out infinite alternate}
+.fv-run .fv-tok-legs>i:first-child{animation-name:fv-leg-a}
+.fv-run .fv-tok-legs>i:last-child{animation-name:fv-leg-b}
 @keyframes fv-leg{from{transform:translateY(-2px)}to{transform:translateY(1px)}}
+@keyframes fv-leg-a{from{transform:translate(-2px,-2px) rotate(-22deg)}to{transform:translate(2px,1px) rotate(22deg)}}
+@keyframes fv-leg-b{from{transform:translate(2px,1px) rotate(22deg)}to{transform:translate(-2px,-2px) rotate(-22deg)}}
 @keyframes fv-bob{from{margin-top:0}to{margin-top:-2px}}
+/* 走るときは少し前傾、手を振る */
+.fv-run .fv-tok-fig{transform:scaleX(var(--face,1)) rotate(7deg)}
+.fv-run .fv-tok-hand{animation:fv-swing .22s linear infinite alternate}
+.fv-run .fv-tok-glove{animation:fv-swing .22s linear infinite alternate-reverse}
+@keyframes fv-swing{from{margin-top:-3px}to{margin-top:3px}}
+/* 後ろ向き（奥へ走る）: 目を隠す */
+.fv-back .fv-tok-eye{display:none}
+.fv-back .fv-tok-cap{height:13px}
+
+/* ---- グラブと素手 ---- */
+.fv-tok-glove{position:absolute;left:-2px;top:20px;width:11px;height:10px;background:#B5713A;border:2px solid #1C2B4B;border-radius:50% 50% 42% 42%;box-sizing:border-box;z-index:3;transition:left .12s,top .12s}
+.fv-tok-hand{position:absolute;left:23px;top:22px;width:7px;height:7px;background:#FFE8D1;border:2px solid #1C2B4B;border-radius:50%;box-sizing:border-box;z-index:3;transition:left .12s,top .12s}
+.fv-runner .fv-tok-glove{left:1px;top:22px;width:7px;height:7px;background:#FFE8D1;border-radius:50%}
+
+/* ---- ポーズ（見た目のみ） ---- */
+/* 構え: 腰を落としてグラブを前へ */
+.fv-ready .fv-tok-fig{transform:scaleX(var(--face,1)) translateY(3px) scaleY(.88)}
+.fv-ready .fv-tok-glove{left:5px;top:27px}.fv-ready .fv-tok-hand{left:18px;top:28px}
+/* ゴロ: グラブを地面に */
+.fv-low .fv-tok-fig{transform:scaleX(var(--face,1)) translateY(4px) scaleY(.82)}
+.fv-low .fv-tok-glove{left:9px;top:34px}.fv-low .fv-tok-hand{left:17px;top:31px}
+/* フライ: 両手を上げて捕る */
+.fv-high .fv-tok-glove{left:4px;top:-13px}.fv-high .fv-tok-hand{left:17px;top:-9px}
+.fv-high .fv-tok-fig{transform:scaleX(var(--face,1)) translateY(-1px)}
+/* ベースカバー: グラブを上げて的を作る */
+.fv-target .fv-tok-glove{left:-6px;top:7px}
+/* 送球を受ける: グラブ側へ大きく伸びる */
+.fv-stretch .fv-tok-fig{transform:scaleX(var(--face,1)) translateX(-5px) rotate(-14deg)}
+.fv-stretch .fv-tok-glove{left:-10px;top:12px}
+/* 送球動作（内野）とクロウホップ（外野） */
+.fv-throw .fv-tok-fig{animation:fv-throw .4s ease-out both}
+.fv-crow .fv-tok-fig{animation:fv-crow .45s ease-out both}
+.fv-throw .fv-tok-hand,.fv-crow .fv-tok-hand{animation:fv-arm .4s ease-out both}
+@keyframes fv-throw{0%{transform:scaleX(var(--face,1)) rotate(-12deg)}45%{transform:scaleX(var(--face,1)) rotate(-16deg)}75%{transform:scaleX(var(--face,1)) rotate(14deg)}100%{transform:scaleX(var(--face,1)) rotate(5deg)}}
+@keyframes fv-crow{0%{transform:scaleX(var(--face,1)) translateY(0) rotate(-6deg)}28%{transform:scaleX(var(--face,1)) translate(4px,-9px) rotate(-12deg)}52%{transform:scaleX(var(--face,1)) translate(6px,0) rotate(-16deg)}78%{transform:scaleX(var(--face,1)) translate(8px,0) rotate(16deg)}100%{transform:scaleX(var(--face,1)) translate(8px,0) rotate(6deg)}}
+@keyframes fv-arm{0%{left:-6px;top:14px}45%{left:-4px;top:-4px}75%{left:28px;top:16px}100%{left:24px;top:24px}}
+/* 走者のスライディング（足から） */
+.fv-slide .fv-tok-fig{transform:scaleX(var(--face,1)) translate(3px,9px) rotate(-76deg)}
+.fv-slide .fv-tok-ring{background:rgba(214,167,112,.8);left:-12px;width:54px;height:16px;bottom:-7px;box-shadow:0 0 0 3px rgba(214,167,112,.35)}
+/* アウトになった走者 */
+.fv-tok-out{position:absolute;left:50%;top:-24px;transform:translateX(-50%) rotate(-6deg);padding:0 6px;height:18px;border-radius:6px;background:#E5484D;border:2px solid #fff;color:#fff;font-size:12px;font-weight:900;line-height:14px;letter-spacing:.04em;box-shadow:0 2px 0 #1C2B4B;display:none;z-index:5;box-sizing:border-box}
+.fv-out .fv-tok-out{display:block;animation:fv-stamp-s .3s ease-out both}
+.fv-out .fv-tok-fig{opacity:.45;filter:grayscale(1)}
+.fv-out .fv-tok-label{display:none}
+.fv-out{animation:fv-outfade 2.4s ease-in forwards}
+@keyframes fv-outfade{0%,55%{opacity:1}100%{opacity:.55}}
+@keyframes fv-stamp-s{0%{transform:translateX(-50%) rotate(-6deg) scale(1.8);opacity:0}100%{transform:translateX(-50%) rotate(-6deg) scale(1);opacity:1}}
 .fv-sel .fv-tok-ring{background:rgba(255,213,74,.35);border:3px solid #FFD54A;box-shadow:0 0 0 2px #1C2B4B;left:-8px;width:46px;height:17px;bottom:-8px}
 .fv-sel .fv-tok-arrow{display:block;animation:fv-arrow .5s ease-in-out infinite alternate}
 .fv-sel .fv-tok-label{background:#FFD54A;color:#1C2B4B;border-color:#1C2B4B}
 @keyframes fv-arrow{from{transform:translateY(-3px)}to{transform:translateY(3px)}}
 .fv-dive .fv-tok-fig{transform:rotate(72deg) translate(4px,6px)}
+.fv-dive .fv-tok-glove{left:26px;top:14px}
 .fv-dive-l .fv-tok-fig{transform:rotate(-72deg) translate(-4px,6px)}
 .fv-down .fv-tok-fig{opacity:.85}
+/* ボールを持っている野手 */
+.fv-hold .fv-tok-ring{background:rgba(255,255,255,.28);border:3px solid #fff;box-shadow:0 0 0 2px #1C2B4B,0 0 14px 3px rgba(255,213,74,.85);left:-8px;width:46px;height:17px;bottom:-8px;box-sizing:border-box;animation:fv-holdpulse .7s ease-in-out infinite alternate}
+@keyframes fv-holdpulse{from{box-shadow:0 0 0 2px #1C2B4B,0 0 6px 1px rgba(255,213,74,.6)}to{box-shadow:0 0 0 2px #1C2B4B,0 0 16px 5px rgba(255,213,74,.95)}}
 .fv-runner .fv-tok-cap{border-radius:12px 12px 6px 6px;height:13px;top:-5px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.18)}
 .fv-runner .fv-tok-body{background:#F3F6FB}
 .fv-runner .fv-tok-label{background:#E5484D;border-color:#fff}
@@ -48,24 +103,39 @@
 
 /* ---- ボール ---- */
 .fv-ball{width:13px;height:13px;margin:-6.5px 0 0 -6.5px;background:#fff;border:2.5px solid #1C2B4B;border-radius:50%;box-sizing:border-box;will-change:transform}
-.fv-shadow{width:22px;height:9px;margin:-4.5px 0 0 -11px;background:rgba(10,20,40,.55);border-radius:50%}
+.fv-shadow{width:22px;height:9px;margin:-4.5px 0 0 -11px;background:radial-gradient(closest-side,rgba(10,20,40,.6),rgba(10,20,40,.25) 70%,transparent);border-radius:50%}
+.fv-trail{width:13px;height:13px;margin:-6.5px 0 0 -6.5px;border-radius:50%;background:rgba(255,255,255,.85);opacity:0;pointer-events:none}
 .fv-landmark{width:46px;height:18px;margin:-9px 0 0 -23px;border:3px dashed #FFD54A;border-radius:50%;background:rgba(255,213,74,.18);box-sizing:border-box;animation:fv-pulse .6s ease-in-out infinite alternate}
 .fv-landmark::after{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:#FFD54A}
 @keyframes fv-pulse{from{opacity:.55}to{opacity:1}}
 
-/* ---- 送球先マーカー ---- */
+/* ---- 送球先マーカー（ラベルはダイヤモンドの外側へ逃がし、細いポインタで塁を指す） ---- */
 .fv-basemark{width:0;height:0;z-index:1500;pointer-events:none;opacity:0;transition:opacity .12s}
-.fv-basemark.show{opacity:1}
-.fv-basemark span{position:absolute;left:0;bottom:12px;transform:translateX(-50%);display:flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:14px;background:rgba(28,43,75,.9);border:2px solid #fff;font-size:14px;font-weight:900;white-space:nowrap}
+.fv-basemark.show,.fv-basemark.tgt{opacity:1}
+.fv-basemark.tgt span{display:none}
+.fv-basering{position:absolute;left:-26px;top:-10px;width:52px;height:20px;border-radius:50%;border:2.5px dashed rgba(255,255,255,.9);box-sizing:border-box}
+.fv-basemark.on .fv-basering,.fv-basemark.tgt .fv-basering{border:3.5px solid #FFD54A;background:rgba(255,213,74,.25);box-shadow:0 0 0 2px #1C2B4B,0 0 14px 2px rgba(255,213,74,.8);animation:fv-ringpulse .55s ease-in-out infinite alternate}
+@keyframes fv-ringpulse{from{transform:scale(.92)}to{transform:scale(1.12)}}
+.fv-basemark span{--tx:translateY(0);position:absolute;top:-38px;display:flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:14px;background:rgba(28,43,75,.92);border:2px solid #fff;font-size:14px;font-weight:900;white-space:nowrap;box-sizing:border-box;transform:var(--tx);transition:transform .12s;box-shadow:0 3px 0 rgba(0,0,0,.25)}
 .fv-basemark span b{color:#FFD54A;font-size:16px}
-.fv-basemark span::after{content:"";position:absolute;left:50%;top:100%;margin-left:-6px;border:6px solid transparent;border-top-color:#fff}
-.fv-basemark.on span{background:#FFD54A;color:#1C2B4B;border-color:#1C2B4B;transform:translateX(-50%) scale(1.15)}
+.fv-basemark span::after{content:"";position:absolute;top:50%;margin-top:-6px;border:6px solid transparent}
+/* 1塁: 右外 */
+.fv-basemark[data-base="1"] span{left:26px;transform-origin:left center}
+.fv-basemark[data-base="1"] span::after{right:100%;border-right-color:#fff}
+/* 3塁: 左外 */
+.fv-basemark[data-base="3"] span{right:26px;transform-origin:right center}
+.fv-basemark[data-base="3"] span::after{left:100%;border-left-color:#fff}
+/* 本塁: 左 */
+.fv-basemark[data-base="4"] span{right:30px;top:-34px;transform-origin:right center}
+.fv-basemark[data-base="4"] span::after{left:100%;border-left-color:#fff}
+/* 2塁: 野手の頭上よりさらに上（細い支柱で塁へ） */
+.fv-basemark[data-base="2"] span{--tx:translateX(-50%);left:0;top:auto;bottom:58px;transform-origin:center bottom}
+.fv-basemark[data-base="2"] span::after{left:50%;top:100%;margin:0 0 0 -1.5px;border:0;width:3px;height:44px;background:linear-gradient(#fff,rgba(255,255,255,.2))}
+.fv-basemark.on span{background:#FFD54A;color:#1C2B4B;border-color:#1C2B4B;transform:var(--tx) scale(1.15)}
 .fv-basemark.on span b{color:#E5484D}
-.fv-basemark.on span::after{border-top-color:#1C2B4B}
-.fv-basemark[data-base="4"] span{bottom:auto;top:-30px;left:auto;right:30px;transform:none}
-.fv-basemark[data-base="4"].on span{transform:scale(1.15);transform-origin:right center}
-.fv-basemark[data-base="4"] span::after{left:100%;top:50%;margin:-6px 0 0 0;border-top-color:transparent;border-left-color:#fff}
-.fv-basemark[data-base="4"].on span::after{border-top-color:transparent;border-left-color:#1C2B4B}
+.fv-basemark.on[data-base="1"] span::after{border-right-color:#1C2B4B}
+.fv-basemark.on[data-base="3"] span::after,.fv-basemark.on[data-base="4"] span::after{border-left-color:#1C2B4B}
+.fv-basemark.on[data-base="2"] span::after{background:linear-gradient(#1C2B4B,rgba(28,43,75,.2))}
 
 /* ---- HUD ---- */
 .fv-hud{left:16px;top:52px;display:flex;align-items:center;gap:8px;height:40px;padding:0 14px 0 8px;background:rgba(28,43,75,.92);border:3px solid #FFD54A;border-radius:12px;font-weight:900;z-index:3000}
@@ -73,11 +143,20 @@
 .fv-type{font-size:19px}
 .fv-who{font-size:15px;color:#B8C4DB}
 .fv-who:empty{display:none}
-.fv-prompt{left:50%;bottom:16px;transform:translateX(-50%);height:46px;padding:0 20px;display:flex;align-items:center;background:rgba(28,43,75,.92);border:3px solid #FFD54A;border-radius:12px;font-size:18px;font-weight:900;white-space:nowrap;z-index:3000}
-.fv-callout{left:0;right:0;top:210px;text-align:center;font-size:72px;font-weight:900;color:#FFD54A;text-shadow:5px 5px 0 #1C2B4B,-2px -2px 0 #1C2B4B,2px -2px 0 #1C2B4B,-2px 2px 0 #1C2B4B;opacity:0;pointer-events:none;z-index:3100;transform:scale(.8);transition:opacity .15s,transform .15s}
-.fv-callout.show{opacity:1;transform:scale(1)}
-.fv-callout.bad{color:#fff;text-shadow:5px 5px 0 #E5484D,-2px -2px 0 #1C2B4B,2px -2px 0 #1C2B4B,-2px 2px 0 #1C2B4B}
-.fv-callout.hr{font-size:96px}
+.fv-prompt{left:50%;bottom:16px;transform:translateX(-50%);height:46px;padding:0 18px 0 6px;display:flex;align-items:center;gap:10px;background:linear-gradient(180deg,rgba(40,58,98,.96),rgba(28,43,75,.96));border:3px solid #FFD54A;border-radius:14px;box-shadow:0 4px 0 rgba(0,0,0,.28);font-size:18px;font-weight:900;white-space:nowrap;z-index:3000;box-sizing:border-box;overflow:hidden}
+.fv-prompt-tag{flex:none;background:#FFD54A;color:#1C2B4B;border-radius:9px;padding:3px 10px;font-size:15px;line-height:1.2}
+.fv-assist .fv-prompt-tag{background:#7FD1FF}
+.fv-prompt-txt{display:flex;align-items:center;gap:4px}
+.fv-prompt kbd{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;padding:0 5px;margin:0 2px;border-radius:6px;background:#fff;color:#1C2B4B;border-bottom:3px solid #9AA8C4;font:inherit;font-size:14px;line-height:1;box-sizing:border-box}
+.fv-prompt em{font-style:normal;color:#FFD54A}
+.fv-sep{display:inline-block;width:1px;height:20px;margin:0 8px;background:rgba(255,255,255,.3)}
+/* 自動送球までの残り時間 */
+.fv-prompt-auto::after{content:"";position:absolute;left:0;bottom:0;height:4px;width:100%;background:#FFD54A;transform-origin:left center;transform:scaleX(var(--auto,1))}
+.fv-callout{left:50%;top:50px;padding:2px 26px 6px;border-radius:16px;background:rgba(28,43,75,.9);border:4px solid #FFD54A;box-shadow:0 5px 0 rgba(0,0,0,.3);font-size:44px;line-height:1.15;font-weight:900;color:#FFD54A;white-space:nowrap;text-shadow:3px 3px 0 #1C2B4B;opacity:0;pointer-events:none;z-index:3100;transform:translateX(-50%) rotate(-3deg) scale(.9);transition:opacity .2s,transform .2s}
+.fv-callout.show{opacity:1;transform:translateX(-50%) rotate(-3deg) scale(1);animation:fv-stamp .38s cubic-bezier(.2,.9,.3,1.25) both}
+@keyframes fv-stamp{0%{opacity:0;transform:translateX(-50%) rotate(-10deg) scale(1.9)}60%{opacity:1;transform:translateX(-50%) rotate(-2deg) scale(.94)}100%{opacity:1;transform:translateX(-50%) rotate(-3deg) scale(1)}}
+.fv-callout.bad{color:#fff;border-color:#E5484D;text-shadow:3px 3px 0 #E5484D}
+.fv-callout.hr{font-size:60px;top:46px}
 
 /* ---- タッチ操作 ---- */
 .fv-dpad{left:20px;bottom:20px;width:168px;height:168px;z-index:3000}
@@ -96,17 +175,20 @@
 @media (prefers-reduced-motion:reduce){
   .fv *,.fv *::before,.fv *::after{animation:none!important;transition:none!important}
 }
-.fv-rm .fv-tok-arrow,.fv-rm .fv-landmark{animation:none}
+.fv-rm .fv-tok-arrow,.fv-rm .fv-landmark,.fv-rm .fv-callout,.fv-rm .fv-basering,.fv-rm .fv-tok-fig,.fv-rm .fv-tok-hand,.fv-rm .fv-tok-glove,.fv-rm .fv-tok-out,.fv-rm .fv-out,.fv-rm .fv-tok-ring{animation:none!important}
+.fv-rm .fv-trail{display:none}
 
 /* ---- 送球先マーカーはタップ/クリックで送球 ---- */
 .fv-user .fv-basemark.show span{pointer-events:auto;cursor:pointer}
 .fv-user .fv-basemark.show span:hover{filter:brightness(1.1)}
 /* ---- おまかせ守備（fieldMode 'assist'）: 捕るまでは操作なし、捕ったら送球先だけ ---- */
 .fv-assist .fv-dpad,.fv-assist .fv-btn-x{display:none}
-.fv-assist[data-phase="live"] .fv-actions,.fv-assist[data-phase="bobble"] .fv-actions{display:none}
+.fv-assist[data-phase="live"] .fv-actions,.fv-assist[data-phase="bobble"] .fv-actions,.fv-assist[data-phase="throw"] .fv-actions,.fv-assist[data-phase="after"] .fv-actions,.fv-assist[data-phase="done"] .fv-actions{display:none}
 .fv-assist[data-phase="secured"] .fv-basemark span{font-size:18px;height:34px;padding:0 14px}
 .fv-assist[data-phase="secured"]::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:1400;
   box-shadow:inset 0 0 0 6px rgba(127,209,255,.55),inset 0 0 80px rgba(127,209,255,.35)}
 .fv-assist .fv-chip{background:#7FD1FF}
 /* CPU 守備ビュー（ユーザーの攻撃中・早送り）: タップでスキップ */
 .fv-cpu{cursor:pointer}
+/* タッチ端末の送球選択中はプロンプトが上部（top:96px）に来るので、コールアウトは小さくその上へ */
+body.touch .fv-user[data-phase="secured"] .fv-callout{top:40px;font-size:30px;padding:0 20px 3px;border-width:3px}

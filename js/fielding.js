@@ -148,6 +148,14 @@ export function createFieldingView(container, opts = {}) {
     return path.length - 1;
   })();
   const tdTime = path[tdIndex].t;
+  /** 飛球が捕球高さまで下りてくる時刻（見た目専用: 落下点で待つ外野手の「入り直し」演出） */
+  const catchT = (() => {
+    if (type === 'grounder' || isHR) return tdTime;
+    let iMax = 0;
+    for (let i = 1; i <= tdIndex; i++) if (path[i].z > path[iMax].z) iMax = i;
+    for (let i = iMax; i <= tdIndex; i++) if (path[i].z < REACH_Z) return path[i].t;
+    return tdTime;
+  })();
 
   function buildPath() {
     let src = Array.isArray(ball.path) ? ball.path.filter((p) => p && Number.isFinite(+p.x) && Number.isFinite(+p.y))
@@ -225,6 +233,8 @@ export function createFieldingView(container, opts = {}) {
       react: eng ? eng.react : 0.26 - (fieldingV / 99) * 0.1,
       x: home.x, y: home.y, home, target: null, speedMul: 1,
       role: 'stay', downUntil: 0, dive: null, moving: false, el: null,
+      // 見た目専用（判定には使わない）
+      face: 1, vx: 0, vy: 0, vo: { x: 0, y: 0 }, waitSince: null, catchAt: null, catchPose: '', throwAt: null, recvAt: null,
     };
   });
   const byPos = (pos) => fielders.find((f) => f.pos === pos);
@@ -236,12 +246,13 @@ export function createFieldingView(container, opts = {}) {
   const occ = [0, 1, 2].map((i) => !!(opts.runners && opts.runners[i]));
   const runners = [];
   runners.push({ id: opts.batterId ?? ball.batterId ?? 'batter', name: opts.batterName || '', isBatter: true, origin: 0,
-    p: 0, goal: 1, speed: runnerSpeed(opts.batterSpeed), startAt: 0.3, gone: false, scored: false, el: null });
+    p: 0, goal: 1, speed: runnerSpeed(opts.batterSpeed), startAt: 0.3, gone: false, scored: false, el: null,
+    face: 1, vx: 0, vy: 0, vo: { x: 0, y: 0 } });
   (opts.runners || []).slice(0, 3).forEach((r, i) => {
     if (!r) return;
     const forced = occ.slice(0, i).every(Boolean);
     runners.push({ id: r.id, name: r.name || '', isBatter: false, origin: i + 1, forced, p: i + 1, goal: i + 1,
-      speed: runnerSpeed(r.speed), startAt: 0.05, gone: false, scored: false, el: null });
+      speed: runnerSpeed(r.speed), startAt: 0.05, gone: false, scored: false, el: null, face: 1, vx: 0, vy: 0, vo: { x: 0, y: 0 } });
   });
   // 初期目標
   for (const r of runners) {
@@ -359,7 +370,7 @@ export function createFieldingView(container, opts = {}) {
   const dom = {
     layer: q('.fv-layer'), ball: q('.fv-ball'), shadow: q('.fv-shadow'), mark: q('.fv-landmark'),
     prompt: q('.fv-prompt'), callout: q('.fv-callout'), who: q('[data-ref="who"]'), skip: q('.fv-skip'),
-    bases: [...root.querySelectorAll('.fv-basemark')], zLabel: q('[data-ref="z-label"]'), xLabel: q('[data-ref="x-label"]'),
+    bases: [...root.querySelectorAll('.fv-basemark')], trail: [...root.querySelectorAll('.fv-trail')], zLabel: q('[data-ref="z-label"]'), xLabel: q('[data-ref="x-label"]'),
   };
   fielders.forEach((f) => { f.el = tokenEl(f.color, f.pos, false); dom.layer.appendChild(f.el); });
   runners.forEach((r) => { r.el = tokenEl(opts.runnerColor || '#E5484D', r.isBatter ? '打' : '走', true); dom.layer.appendChild(r.el); });
@@ -368,7 +379,7 @@ export function createFieldingView(container, opts = {}) {
     const el = document.createElement('div');
     el.className = `fv-tok${runner ? ' fv-runner' : ''}`;
     el.style.setProperty('--team', color);
-    el.innerHTML = `<i class="fv-tok-ring"></i><div class="fv-tok-fig"><div class="fv-tok-head"><i class="fv-tok-cap"></i><i class="fv-tok-eye l"></i><i class="fv-tok-eye r"></i></div><div class="fv-tok-body"></div><div class="fv-tok-legs"><i></i><i></i></div></div><b class="fv-tok-label">${esc(label)}</b><i class="fv-tok-arrow"></i>`;
+    el.innerHTML = `<i class="fv-tok-ring"></i><div class="fv-tok-fig"><div class="fv-tok-head"><i class="fv-tok-cap"></i><i class="fv-tok-eye l"></i><i class="fv-tok-eye r"></i></div><div class="fv-tok-body"></div><div class="fv-tok-legs"><i></i><i></i></div><i class="fv-tok-glove"></i><i class="fv-tok-hand"></i></div><b class="fv-tok-label">${esc(label)}</b><i class="fv-tok-arrow"></i>${runner ? '<b class="fv-tok-out">OUT</b>' : ''}`;
     return el;
   }
 
@@ -416,7 +427,7 @@ export function createFieldingView(container, opts = {}) {
     const baseMarks = [1, 2, 3, 4].map((n) => {
       const p = project(BASES[n].x, BASES[n].y);
       const key = { 1: '→', 2: '↑', 3: '←', 4: '↓' }[n];
-      return `<div class="fv-basemark" data-base="${n}" style="left:${p.X.toFixed(1)}px;top:${p.Y.toFixed(1)}px"><span><b>${key}</b>${BASE_NAME[n]}</span></div>`;
+      return `<div class="fv-basemark" data-base="${n}" style="left:${p.X.toFixed(1)}px;top:${p.Y.toFixed(1)}px"><i class="fv-basering"></i><span><b>${key}</b>${BASE_NAME[n]}</span></div>`;
     }).join('');
     const typeLabel = TYPE_LABEL[type] || '';
     return `
@@ -443,9 +454,9 @@ export function createFieldingView(container, opts = {}) {
   ${ppole(1)}${ppole(-1)}
 </svg>
 ${baseMarks}
-<div class="fv-layer"><div class="fv-landmark"></div><div class="fv-shadow"></div><div class="fv-ball"></div></div>
+<div class="fv-layer"><div class="fv-landmark"></div><div class="fv-shadow"></div><i class="fv-trail"></i><i class="fv-trail"></i><i class="fv-trail"></i><div class="fv-ball"></div></div>
 <div class="fv-hud"><span class="fv-chip">${userControlled && !isHR ? (assistMode ? 'おまかせ守備' : '守備') : '打球'}</span><span class="fv-type">${esc(typeLabel)}</span><span class="fv-who" data-ref="who"></span></div>
-<div class="fv-callout"></div>
+<div class="fv-callout" role="status" aria-live="polite"></div>
 <div class="fv-prompt"></div>
 ${userControlled && !isHR ? `
 <div class="fv-dpad">
@@ -486,25 +497,34 @@ ${userControlled && !isHR ? `
   function callout(text, cls = '', ms = 1100) {
     if (!dom.callout) return;
     dom.callout.textContent = text;
+    dom.callout.className = 'fv-callout';
+    void dom.callout.offsetWidth; // スタンプ演出を毎回やり直す
     dom.callout.className = `fv-callout show ${cls}`;
     clearTimeout(calloutTimer);
     if (ms > 0) calloutTimer = setTimeout(() => { if (dom.callout) dom.callout.classList.remove('show'); }, ms);
   }
 
+  /** 下部の操作ガイド（キーはキーキャップ風に） */
+  const kbd = (k) => `<kbd>${k}</kbd>`;
   function setPrompt() {
     root.dataset.phase = phase;
     root.dataset.base = selBase || '';
-    let txt = '';
-    if (phase === 'hr') txt = '';
-    else if (!userControlled) txt = '';
-    else if (phase === 'live') txt = '↑↓←→:移動　Z:キャッチ／ダイブ　X:選手切替';
-    else if (phase === 'bobble') txt = 'ボールを拾っています…';
-    else if (phase === 'secured') txt = `↑2塁　←3塁　→1塁　↓本塁　Z:送球${selBase ? `（${BASE_NAME[selBase]}）` : ''}`;
-    if (touchAssist && !assistMode && phase === 'live') txt = 'おまかせ追球中 · 十字キーで動かせる · ダイブで好捕！';
-    if (assistMode && phase === 'live') txt = 'おまかせ守備：野手が自動で捕るよ';
-    if (assistMode && phase === 'secured' && !coarse) txt = `送球先: →1塁 ↑2塁 ←3塁 ↓本塁 → Z　（そのままなら ${selBase ? BASE_NAME[selBase] : '投げない'}）`;
-    if (coarse && userControlled && phase === 'secured') txt = `投げる塁をタップ！${selBase ? ` おすすめ：${BASE_NAME[selBase]}` : ''}`;
-    if (dom.prompt) { dom.prompt.textContent = txt; dom.prompt.style.display = txt ? '' : 'none'; }
+    let html = '';
+    let tag = '';
+    const rec = selBase ? BASE_NAME[selBase] : '投げない';
+    if (phase === 'hr' || !userControlled) html = '';
+    else if (phase === 'live') { tag = '守備'; html = `${kbd('↑↓←→')}移動<span class="fv-sep"></span>${kbd('Z')}キャッチ／ダイブ<span class="fv-sep"></span>${kbd('X')}選手切替`; }
+    else if (phase === 'bobble') { tag = '守備'; html = 'ボールを拾っています…'; }
+    else if (phase === 'secured') { tag = '送球'; html = `${kbd('↑')}2塁 ${kbd('←')}3塁 ${kbd('→')}1塁 ${kbd('↓')}本塁<span class="fv-sep"></span>${kbd('Z')}送球${selBase ? `（<em>${BASE_NAME[selBase]}</em>）` : ''}`; }
+    if (touchAssist && !assistMode && phase === 'live') { tag = 'おまかせ'; html = '自動で追球中 · 十字キーで動かせる · ダイブで好捕！'; }
+    if (assistMode && phase === 'live') { tag = 'おまかせ'; html = '野手が自動で捕るよ'; }
+    if (assistMode && phase === 'secured' && !coarse) { tag = '送球先'; html = `${kbd('→')}1塁 ${kbd('↑')}2塁 ${kbd('←')}3塁 ${kbd('↓')}本塁 → ${kbd('Z')}<span class="fv-sep"></span>そのままなら <em>${rec}</em>`; }
+    if (coarse && userControlled && phase === 'secured') { tag = '送球'; html = `投げる塁をタップ！${selBase ? `<span class="fv-sep"></span>おすすめ <em>${BASE_NAME[selBase]}</em>` : ''}`; }
+    if (dom.prompt) {
+      dom.prompt.innerHTML = html ? `${tag ? `<span class="fv-prompt-tag">${tag}</span>` : ''}<span class="fv-prompt-txt">${html}</span>` : '';
+      dom.prompt.style.display = html ? '' : 'none';
+      dom.prompt.classList.toggle('fv-prompt-auto', phase === 'secured' && userControlled);
+    }
     if (dom.zLabel) dom.zLabel.textContent = phase === 'secured' ? '送球' : 'キャッチ';
   }
 
@@ -513,6 +533,7 @@ ${userControlled && !isHR ? `
     const k = (0.55 + 0.55 * p.s) * extraScale;
     el.style.transform = `translate(${p.X.toFixed(1)}px,${p.Y.toFixed(1)}px) scale(${k.toFixed(3)})`;
     el.style.zIndex = String(100 + Math.round(p.Y));
+    return p;
   }
 
   function runnerXY(r) {
@@ -523,41 +544,177 @@ ${userControlled && !isHR ? `
     return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
   }
 
+  // ---------- 見た目専用の動き（位置・判定には影響しない） ----------
+  const DIAMOND_C = { x: (F.first.x + F.third.x) / 2, y: F.second.y / 2 };
+  const unit = (x, y) => { const d = Math.hypot(x, y) || 1; return { x: x / d, y: y / d }; };
+  const ease = (v) => 1 - (1 - clamp(v, 0, 1)) ** 2;
+  /** 位置オフセットを滑らかに追従させる（m） */
+  function smoothOffset(o, tx, ty, k = 0.18) {
+    if (reduceMotion) { o.vo.x = tx; o.vo.y = ty; return o.vo; }
+    o.vo.x += (tx - o.vo.x) * k; o.vo.y += (ty - o.vo.y) * k;
+    return o.vo;
+  }
+  /** 走者: ベースを膨らんで回る・一塁の駆け抜け */
+  function runnerOffset(r) {
+    let ox = 0, oy = 0;
+    const p = clamp(r.p, 0, 4);
+    const i = Math.min(3, Math.floor(p));
+    const k = p - i;
+    if (r.goal > i + 1 + 1e-3 && k > 0 && i < 3) {
+      // 次の塁を回る: 塁の手前で外へ膨らみ、塁の上で戻る
+      const a = BASES[i], b = BASES[i + 1];
+      const n = unit((a.x + b.x) / 2 - DIAMOND_C.x, (a.y + b.y) / 2 - DIAMOND_C.y);
+      const amp = 1.7 * Math.sin(Math.PI * k) * (0.35 + 0.65 * k);
+      ox += n.x * amp; oy += n.y * amp;
+    }
+    if (r.isBatter && r.thruAt != null && !r.gone) {
+      const e = t - r.thruAt;
+      const g = e < 0.45 ? ease(e / 0.45) : e < 1.0 ? 1 : Math.max(0, 1 - (e - 1.0) / 0.9);
+      const d = r.thruInf ? unit(F.first.x - F.home.x, F.first.y - F.home.y) : unit(F.second.x - F.first.x, F.second.y - F.first.y);
+      const len = r.thruInf ? 3.2 : 2.4;
+      if (r.goal <= 1 + 1e-3) { ox += d.x * len * g; oy += d.y * len * g; }
+    }
+    return smoothOffset(r, ox, oy);
+  }
+  /** 野手: 飛球の落下点で待つときは一歩下がって構え、落ちてくるのに合わせて前へ入る */
+  function fielderOffset(f) {
+    let ox = 0, oy = 0;
+    const camping = phase === 'live' && inAirAt(t) && !f.moving && (f.role === 'chase' || f.role === 'backup' || (f === user && assistMode))
+      && !(f === user && userControlled && !assistMode) && t < catchT;
+    if (camping) {
+      if (f.waitSince == null) f.waitSince = t;
+      const m = Math.min(1, (t - f.waitSince) / 0.5) * clamp((catchT - t) / 1.0, 0, 1) * 1.3;
+      const n = unit(f.x, f.y);
+      ox = n.x * m; oy = n.y * m;
+    } else f.waitSince = null;
+    return smoothOffset(f, ox, oy, 0.25);
+  }
+  /** 向き（左右反転）と後ろ向き */
+  function faceTok(o, p, lookX) {
+    const lx = o._sx ?? p.X, ly = o._sy ?? p.Y;
+    o._sx = p.X; o._sy = p.Y;
+    o.vx = o.vx * 0.7 + (p.X - lx) * 0.3; o.vy = o.vy * 0.7 + (p.Y - ly) * 0.3;
+    if (o.moving && Math.abs(o.vx) > 0.12) o.face = o.vx > 0 ? 1 : -1;
+    else if (!o.moving && lookX != null && Math.abs(lookX - p.X) > 6) o.face = lookX > p.X ? 1 : -1;
+    const back = !!o.moving && o.vy < -0.15 && Math.abs(o.vy) > Math.abs(o.vx) * 1.1;
+    o.el.style.setProperty('--face', String(o.face || 1));
+    o.el.classList.toggle('fv-back', back);
+  }
+  const POSES = ['fv-ready', 'fv-low', 'fv-high', 'fv-target', 'fv-stretch', 'fv-throw', 'fv-crow'];
+  function setPose(el, pose) {
+    for (const c of POSES) el.classList.toggle(c, c === pose);
+  }
+  function receiverOf(to) {
+    return fielders.filter((f) => f !== holder).sort((a, c) => dist(a, to) - dist(c, to))[0] || null;
+  }
+
+  function ballRenderPos() {
+    if ((phase === 'secured' || phase === 'after' || phase === 'done') && holder && !throwInfo) return { x: holder.x + 0.3, y: holder.y, z: 1.3 };
+    if (throwInfo) return throwPos();
+    if (phase === 'bobble' && holder) {
+      const k = clamp((bobbleUntil - t) / 0.7, 0, 1);
+      return { x: holder.x + 0.9 * k, y: holder.y + 0.5 * k, z: 1.6 * Math.sin(Math.PI * k) };
+    }
+    const b = ballAt(t);
+    // ゴロは小さく跳ねながら転がる（見た目だけ）
+    if (!reduceMotion && b.z < 0.05 && t < PEND) {
+      const q2 = ballAt(Math.max(P0, t - 0.05));
+      const v = Math.hypot(b.x - q2.x, b.y - q2.y) / 0.05;
+      if (v > 2) b.z += Math.min(0.75, v * 0.028) * Math.abs(Math.sin((Math.PI * t) / 0.3));
+    }
+    return b;
+  }
+
   function render() {
+    const b = ballRenderPos();
+    const pbView = project(b.x, b.y, b.z);
+    const thrower = throwInfo ? project(throwInfo.from.x, throwInfo.from.y) : null;
+    const holderP = holder ? project(holder.x, holder.y) : null;
+    const recv = throwInfo ? receiverOf(throwInfo.to) : null;
     // 野手
     for (const f of fielders) {
-      placeTok(f.el, f.x, f.y);
+      const o = fielderOffset(f);
+      const p = placeTok(f.el, f.x + o.x, f.y + o.y);
       f.el.classList.toggle('fv-run', f.moving && !reduceMotion);
       f.el.classList.toggle('fv-sel', f === user && (phase === 'live' || phase === 'bobble'));
-      f.el.classList.toggle('fv-hold', f === holder);
+      f.el.classList.toggle('fv-hold', f === holder && phase !== 'throw');
       const diving = f.dive && t < f.dive.until + 0.5;
       f.el.classList.toggle('fv-dive', !!diving);
       f.el.classList.toggle('fv-dive-l', !!(diving && f.dive.dx < 0));
       f.el.classList.toggle('fv-down', t < f.downUntil);
+      // 構え・ポーズ
+      let pose = '';
+      let look = pbView.X;
+      if (phase === 'live' && t < f.react) pose = 'fv-ready';
+      if ((phase === 'live' || phase === 'bobble') && !f.moving && !diving && f.role === 'cover') pose = 'fv-ready';
+      if (phase === 'live' && (f.role === 'chase' || f === user || f.role === 'backup') && !diving) {
+        const d = Math.hypot(b.x - f.x, b.y - f.y);
+        if (inAirAt(t)) { if (d < 4 && b.z < 10) pose = 'fv-high'; } else if (d < 4.5 && b.z < 1.2) pose = 'fv-low';
+      }
+      if (f === holder && f.catchAt != null && t - f.catchAt < 0.4) pose = f.catchPose;
+      if ((phase === 'secured' || phase === 'bobble') && f !== holder && f.role === 'cover' && !f.moving) {
+        pose = 'fv-target';
+        if (holderP) { f.face = holderP.X < p.X ? 1 : -1; look = null; } // グラブ側を捕球者へ
+      }
+      if (f.throwAt != null && t - f.throwAt < 0.45) {
+        pose = OUTFIELD.includes(f.pos) ? 'fv-crow' : 'fv-throw';
+        if (throwInfo) look = project(throwInfo.to.x, throwInfo.to.y).X;
+      }
+      if (throwInfo && f === recv) {
+        const k = (t - throwInfo.start) / throwInfo.dur;
+        pose = k > 0.45 ? 'fv-stretch' : 'fv-target';
+        // グラブ側（左）を送球の来る方へ
+        f.face = thrower.X < p.X ? 1 : -1; look = null;
+      }
+      if (f.recvAt != null && t - f.recvAt < 0.35 && f === holder) pose = 'fv-stretch';
+      if (diving || t < f.downUntil) pose = '';
+      setPose(f.el, pose);
+      if (look === null) { f._sx = p.X; f._sy = p.Y; f.el.style.setProperty('--face', String(f.face)); f.el.classList.remove('fv-back'); }
+      else faceTok(f, p, look);
     }
     for (const r of runners) {
-      if (r.gone) { r.el.style.opacity = '0'; continue; }
-      const p = runnerXY(r);
-      placeTok(r.el, p.x, p.y, 0.95);
+      if (r.gone) {
+        if (r.scored) { r.el.style.opacity = '0'; continue; }
+        // アウトになった走者は「OUT」タグを付けて薄くなる
+        if (!r.el.classList.contains('fv-out')) { r.el.classList.add('fv-out'); r.el.classList.remove('fv-run'); }
+        continue;
+      }
+      const o = runnerOffset(r);
+      const xy = runnerXY(r);
+      const p = placeTok(r.el, xy.x + o.x, xy.y + o.y, 0.95);
       r.el.classList.toggle('fv-run', r.moving && !reduceMotion);
+      const remain = (r.goal - r.p) * BASE_LEN;
+      const sliding = !!r.slide && ((r.moving && remain > 0 && remain < 2.6) || (r.reachedAt != null && t - r.reachedAt < 0.9 && Math.abs(r.goal - r.p) < 1e-3));
+      r.el.classList.toggle('fv-slide', sliding);
+      if (sliding) r.el.classList.remove('fv-run');
+      faceTok(r, p, null);
     }
     // ボール
-    let b;
-    if ((phase === 'secured' || phase === 'after' || phase === 'done') && holder && !throwInfo) b = { x: holder.x + 0.3, y: holder.y, z: 1.3 };
-    else if (throwInfo) b = throwPos();
-    else if (phase === 'bobble' && holder) {
-      const k = clamp((bobbleUntil - t) / 0.7, 0, 1);
-      b = { x: holder.x + 0.9 * k, y: holder.y + 0.5 * k, z: 1.6 * Math.sin(Math.PI * k) };
-    } else b = ballAt(t);
     const ps = project(b.x, b.y, 0);
-    const pb = project(b.x, b.y, b.z);
+    const pb = pbView;
     const bk = 0.55 + 0.6 * ps.s;
     dom.ball.style.transform = `translate(${pb.X.toFixed(1)}px,${pb.Y.toFixed(1)}px) scale(${bk.toFixed(3)})`;
-    dom.ball.style.zIndex = String(b.z > 0.6 ? 2000 : 100 + Math.round(ps.Y) + 1);
+    const bz = b.z > 0.6 ? 2000 : 100 + Math.round(ps.Y) + 1;
+    dom.ball.style.zIndex = String(bz);
+    const held2 = holder && !throwInfo;
     const shK = clamp(1 - b.z / 50, 0.6, 1) * bk;
     dom.shadow.style.transform = `translate(${ps.X.toFixed(1)}px,${ps.Y.toFixed(1)}px) scale(${shK.toFixed(3)})`;
     dom.shadow.style.zIndex = String(100 + Math.round(ps.Y) - 1);
-    dom.shadow.style.opacity = holder && !throwInfo ? '0' : String(clamp(0.95 - b.z / 80, 0.6, 0.95));
+    dom.shadow.style.opacity = held2 ? '0' : String(clamp(0.95 - b.z / 80, 0.5, 0.95));
+    // 残像（速い打球・送球のみ）
+    const trailOn = !reduceMotion && (phase === 'hr' || !held2);
+    const posAt = (dt2) => (throwInfo ? throwPos(Math.max(throwInfo.start, t - dt2)) : ballAt(Math.max(P0, t - dt2)));
+    let lastP = pb;
+    dom.trail.forEach((el, i) => {
+      if (!trailOn || (phase !== 'live' && phase !== 'throw' && phase !== 'hr')) { el.style.opacity = '0'; return; }
+      const q2 = posAt(0.035 * (i + 1));
+      const pq = project(q2.x, q2.y, q2.z);
+      const gap = Math.hypot(pq.X - lastP.X, pq.Y - lastP.Y);
+      lastP = pq;
+      el.style.transform = `translate(${pq.X.toFixed(1)}px,${pq.Y.toFixed(1)}px) scale(${(bk * (0.9 - i * 0.18)).toFixed(3)})`;
+      el.style.zIndex = String(bz - 1);
+      el.style.opacity = gap > 2.5 ? String(0.45 - i * 0.13) : '0';
+    });
     // 落下点
     const showMark = userControlled && phase === 'live' && type !== 'grounder' && inAirAt(t);
     dom.mark.style.display = showMark ? '' : 'none';
@@ -568,17 +725,24 @@ ${userControlled && !isHR ? `
     // 送球先
     const showBases = userControlled && phase === 'secured';
     dom.bases.forEach((m) => {
+      const n = Number(m.dataset.base);
       m.classList.toggle('show', showBases);
-      m.classList.toggle('on', showBases && Number(m.dataset.base) === selBase);
+      m.classList.toggle('on', showBases && n === selBase);
+      m.classList.toggle('tgt', !showBases && !!throwInfo && n === throwInfo.base);
     });
+    // 自動送球までの残り時間（プロンプト下のバー）
+    if (dom.prompt && userControlled && phase === 'secured') {
+      const wait = assistMode ? AUTO_THROW_REAL_S * SLOW_SECURED : AUTO_THROW_S;
+      dom.prompt.style.setProperty('--auto', String(clamp(1 - (t - securedAt) / wait, 0, 1).toFixed(3)));
+    }
     if (dom.who) dom.who.textContent = user && userControlled ? `${user.pos} ${user.name}` : '';
   }
 
-  function throwPos() {
+  function throwPos(at = t) {
     const { from, to, start, dur } = throwInfo;
-    const k = clamp((t - start) / dur, 0, 1);
+    const k = clamp((at - start) / dur, 0, 1);
     const d = Math.hypot(to.x - from.x, to.y - from.y);
-    const arc = Math.min(4, 0.6 + d * 0.035);
+    const arc = Math.min(5, 0.6 + d * 0.042); // 見た目の山なり（所要時間は throwInfo.dur のまま）
     return { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k, z: 1.6 + (1.2 - 1.6) * k + arc * 4 * k * (1 - k) };
   }
 
@@ -614,12 +778,18 @@ ${userControlled && !isHR ? `
       // 塁に到達したら進塁を判断
       if (Math.floor(r.p + 1e-6) > prevBase || Math.abs(r.goal - r.p) < 1e-4) {
         const at = Math.round(r.p);
+        if (Math.abs(r.goal - r.p) < 1e-4) r.reachedAt = t; // 見た目用（スライディングの余韻）
         if (Math.abs(r.p - at) < 1e-3 && at >= 4) { r.scored = true; r.gone = true; continue; }
         if (Math.abs(r.goal - r.p) < 1e-4 && Number.isInteger(r.goal) && phase === 'live' && !isHR && !holder) {
           const ballD = Math.hypot(ballAt(t).x, ballAt(t).y);
           const spare = primaryEta - t;
           const caughtPossible = inAirAt(t);
           if (!caughtPossible && ballD > 45 && spare > 1.6 && r.goal < 4) r.goal += 1;
+        }
+        // 見た目用: 打者走者が一塁で止まるなら駆け抜け（内野の打球）／オーバーラン（外野の打球）
+        if (r.isBatter && r.thruAt == null && Math.abs(r.p - 1) < 1e-3 && r.goal <= 1 + 1e-3) {
+          r.thruAt = t;
+          r.thruInf = holder ? INFIELD.includes(holder.pos) : Math.hypot(landing.x, landing.y) < 40;
         }
       }
     }
@@ -648,6 +818,7 @@ ${userControlled && !isHR ? `
       throwStartAt: null, throwArriveAt: null,
     };
     f.moving = false;
+    f.catchAt = t; f.catchPose = air ? 'fv-high' : 'fv-low'; // 見た目用
     play('catch');
     if (caughtInAir) {
       callout(diving ? 'ダイビングキャッチ！' : 'ナイスキャッチ！', 'good');
@@ -758,6 +929,13 @@ ${userControlled && !isHR ? `
     result.throwArriveAt = round2(t + dur);
     verdict = judge ? safeCall(judge, fieldingNow()) : null;
     if (verdict) syncRunners(verdict);
+    // 見た目用: 投げる動作、際どいタイミングの走者はスライディング
+    holder.throwAt = t;
+    for (const r of runners) {
+      if (r.gone || (r.next?.goal ?? r.goal) !== base || (r.isBatter && base === 1)) continue;
+      const arr = r.arrAt ?? r.next?.arrAt;
+      if (arr != null && Math.abs(arr - result.throwArriveAt) < 0.45) r.slide = true;
+    }
     phase = 'throw';
     play('swing');
     setPrompt();
@@ -859,7 +1037,7 @@ ${userControlled && !isHR ? `
       if (t >= throwInfo.start + throwInfo.dur) {
         const recv = fielders.filter((f) => f !== holder).sort((a, c) => dist(a, throwInfo.to) - dist(c, throwInfo.to))[0];
         play('catch');
-        if (recv) { holder = recv; }
+        if (recv) { holder = recv; recv.recvAt = t; }
         const base = throwInfo.base;
         throwInfo = null;
         let wait = 0.45;
