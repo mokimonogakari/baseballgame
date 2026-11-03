@@ -414,7 +414,7 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .land-mark.show{opacity:1;animation:land-pulse .5s ease-in-out infinite alternate}
 @keyframes land-pulse{from{border-width:3px}to{border-width:5px}}
 /* 守備中（CPU が投げる）のヒントと、使わない操作ボタン */
-.auto-hint{position:absolute;left:640px;top:372px;transform:translateX(-50%);padding:4px 14px;border-radius:999px;background:rgba(14,24,48,.78);color:#FFD54A;font-size:15px;font-weight:900;white-space:nowrap;z-index:6;pointer-events:none;display:none}
+.auto-hint{position:absolute;left:640px;top:344px;transform:translateX(-50%);padding:4px 14px;border-radius:999px;background:rgba(14,24,48,.78);color:#FFD54A;font-size:15px;font-weight:900;white-space:nowrap;z-index:6;pointer-events:none;display:none}
 .auto-hint.show{display:block}
 .game.is-auto .dpad,.game.is-auto .btn-x{display:none}
 @media (prefers-reduced-motion: reduce){.land-mark.show{animation:none}}

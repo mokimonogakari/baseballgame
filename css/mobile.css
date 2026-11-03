@@ -331,3 +331,14 @@ body.compact .power-chip i{font-size:15px}
 body.compact .power-chip b{width:34px;height:34px;font-size:22px}
 /* おまかせ守備の送球選択: 塁ボタンと重ならないよう案内を上へ */
 body.touch .fv-assist[data-phase="secured"] .fv-prompt,body.touch .fv-user[data-phase="secured"] .fv-prompt{bottom:auto;top:96px}
+
+/* ---- 2026-11 調整 ---- */
+/* 背の低い横向きスマホ: 十字キーを少し小さくして、投手パネル（特殊能力）に重ねない */
+@media (max-height:430px){#touch-ui{--dp:50px;--gap:6px}}
+/* 送球先の塁ボタン: 本塁・捕手を隠さないよう、右下にダイヤモンドの形で並べる */
+#touch-ui[data-mode][data-field-phase="secured"] .tu-bases{left:auto;right:var(--tu-r);transform:none;display:grid;
+  grid-template-columns:repeat(3,auto);grid-template-areas:". b2 ." "b3 . b1" ". b4 .";gap:4px}
+#touch-ui .tu-bases [data-key="base1"]{grid-area:b1}#touch-ui .tu-bases [data-key="base2"]{grid-area:b2}
+#touch-ui .tu-bases [data-key="base3"]{grid-area:b3}#touch-ui .tu-bases [data-key="base4"]{grid-area:b4}
+#touch-ui[data-mode][data-field-phase="secured"] .tu-bases{bottom:calc(var(--tu-b) + var(--zx) + 10px)}
+#touch-ui[data-mode][data-field-phase="secured"] .tu-bases button{min-width:70px;min-height:50px;padding:4px 8px;font-size:19px;border-radius:14px}
