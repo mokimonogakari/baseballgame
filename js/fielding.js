@@ -29,7 +29,7 @@
  */
 
 const DT = 1 / 120;            // シミュレーション刻み (s)
-const REACH_Z = 2.4;           // 捕球できる高さ
+const REACH_Z = 2.8;           // 捕球できる高さ（engine TUNING.catchHeight と同じ）
 const DIVE_RANGE = 2.5;        // ダイビング可能距離
 const BASE_LEN = 27.43;        // 塁間（走者の走行距離計算用）
 const AUTO_THROW_S = 1.2;      // 送球入力待ち
@@ -125,6 +125,15 @@ export function createFieldingView(container, opts = {}) {
   const isHR = !!ball.isHomeRun || ball.type === 'hr';
   const type = isHR ? 'hr' : (ball.type || 'grounder');
   const outs = num(opts.state?.outs, 0);
+  // 判定をエンジンと一致させる（任意）: previewPlay(fielding) → 走者の目標塁・到達時刻とアウト／セーフ、
+  // throwTime(fielderId, from, base) → 送球の所要時間、suggestThrow(fielding) → おすすめ送球先
+  const judge = typeof opts.previewPlay === 'function' ? opts.previewPlay : null;
+  const engThrowTime = typeof opts.throwTime === 'function' ? opts.throwTime : null;
+  const engSuggest = typeof opts.suggestThrow === 'function' ? opts.suggestThrow : null;
+  let verdict = null;        // 送球後の判定（previewPlay の結果）
+  const timers = [];         // シミュレーション時間のタイマー
+  const later = (fn, sec) => timers.push({ at: t + sec, fn });
+  const safeCall = (fn, ...a) => { try { return fn(...a); } catch (e) { console.warn(e); return null; } };
   const play = (n) => { try { opts.sound?.play?.(n); } catch (e) { /* ignore */ } };
   const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -206,19 +215,21 @@ export function createFieldingView(container, opts = {}) {
     const home = pt(positions[pos], FALLBACK_POSITIONS[pos] || { x: 0, y: 30 });
     const fieldingV = clamp(num(p.fielding, 50), 1, 99);
     const catchingV = clamp(num(p.catching, 50), 1, 99);
+    const eng = p.eng && Number.isFinite(p.eng.runSpeed) ? p.eng : null; // エンジンと同じ守備範囲（判定のずれを防ぐ）
     return {
       id: p.id, name: p.name || '', pos, color: p.color || '#1E88E5',
-      speed: 6 + (clamp(num(p.speed, 50), 1, 99) / 99) * 1.5,
+      speed: eng ? eng.runSpeed : 6 + (clamp(num(p.speed, 50), 1, 99) / 99) * 1.5,
       fielding: fieldingV, catching: catchingV, arm: clamp(num(p.arm, 50), 1, 99),
-      R: 0.95 + (((fieldingV + catchingV) / 2) / 99) * 0.55,
-      react: 0.26 - (fieldingV / 99) * 0.1,
+      R: eng ? eng.reachGround : 0.95 + (((fieldingV + catchingV) / 2) / 99) * 0.55,
+      RA: eng ? eng.reachAir : null,
+      react: eng ? eng.react : 0.26 - (fieldingV / 99) * 0.1,
       x: home.x, y: home.y, home, target: null, speedMul: 1,
       role: 'stay', downUntil: 0, dive: null, moving: false, el: null,
     };
   });
   const byPos = (pos) => fielders.find((f) => f.pos === pos);
   /** 捕球半径（飛球は落下点に入りやすいよう広め） */
-  const catchR = (f, tt) => f.R + (inAirAt(tt) ? 0.6 : 0);
+  const catchR = (f, tt) => (inAirAt(tt) ? (f.RA ?? f.R + 0.6) : f.R);
 
   // ---------- 走者 ----------
   const runnerSpeed = (s) => 6.0 + (clamp(num(s, 50), 1, 99) / 99) * 2.2;
@@ -586,10 +597,18 @@ ${userControlled && !isHR ? `
     for (const r of runners) {
       if (r.gone) { r.moving = false; continue; }
       if (t < r.startAt) { r.moving = false; continue; }
+      if (r.backTo != null && r.goal !== r.backTo && Math.abs(r.p - r.backTo) < 1e-4) r.backTo = null;
       const d = r.goal - r.p;
-      if (Math.abs(d) < 1e-4) { r.moving = false; continue; }
+      if (Math.abs(d) < 1e-4) {
+        r.moving = false;
+        if (r.backTo == null && r.next) { r.goal = r.next.goal; r.arrAt = r.next.arrAt; r.next = null; }
+        continue;
+      }
       const prevBase = Math.floor(r.p + 1e-6);
-      const step = Math.min(Math.abs(d), (r.speed / BASE_LEN) * dt) * Math.sign(d);
+      // エンジンの到達時刻に合わせた速さ（判定と見た目を一致させる）
+      let v = r.speed;
+      if (r.arrAt != null && d > 0) v = clamp((Math.abs(d) * BASE_LEN) / Math.max(dt, r.arrAt - t), 1.5, 14);
+      const step = Math.min(Math.abs(d), (v / BASE_LEN) * dt) * Math.sign(d);
       r.p += step;
       r.moving = true;
       // 塁に到達したら進塁を判断
@@ -655,10 +674,36 @@ ${userControlled && !isHR ? `
   }
   const round2 = (v) => Math.round(v * 100) / 100;
 
+  /** エンジンの判定（previewPlay）どおりに走者の目標塁と到達時刻を合わせる */
+  function syncRunners(pv) {
+    if (!pv?.runners) return;
+    for (const pr of pv.runners) {
+      const r = runners.find((x) => (pr.isBatter ? x.isBatter : !x.isBatter && x.origin === pr.from));
+      if (!r || r.gone) continue;
+      if (pr.isBatter && pv.caught) { r.gone = true; continue; }
+      const goal = clamp(pr.target, 0, 4);
+      const arrAt = pr.arr?.[goal];
+      r.startAt = Math.min(r.startAt, t);
+      if (pv.caught && !pr.isBatter && r.p > r.origin + 1e-3) {
+        // タッチアップ: いったん帰塁してから次の塁へ
+        r.backTo = r.origin; r.goal = r.origin; r.arrAt = null;
+        r.next = goal > r.origin ? { goal, arrAt } : null;
+      } else {
+        r.goal = goal; r.arrAt = goal > r.p + 1e-3 && arrAt != null ? arrAt : null; r.next = null;
+      }
+    }
+  }
+
+  function fieldingNow(extra = {}) {
+    return { ...result, ...extra };
+  }
+
   function enterSecured() {
     phase = 'secured';
     securedAt = t;
-    selBase = smartBase();
+    if (judge && result) syncRunners(safeCall(judge, fieldingNow({ throwTo: null, throwTime: null, throwArriveAt: null })));
+    const sug = engSuggest && result && !result.error ? safeCall(engSuggest, fieldingNow({ throwTo: undefined })) : undefined;
+    selBase = sug !== undefined && sug !== null ? sug : sug === null ? null : smartBase();
     if (touchAssist) { try { opts.sound?.say?.('とった！ 塁をタップして送球！'); } catch {} }
     fielders.forEach((f) => { if (f !== holder && f.role !== 'cover') f.role = 'stay-still'; });
     setPrompt();
@@ -705,11 +750,14 @@ ${userControlled && !isHR ? `
     if (!base) { finishSoon(0.5); return; }
     const to = BASES[base];
     const from = { x: holder.x, y: holder.y };
-    const dur = Math.max(0.15, dist(from, to) / throwSpeed(holder));
+    const eng = engThrowTime ? Number(safeCall(engThrowTime, holder.id, from, base)) : NaN;
+    const dur = Math.max(0.15, Number.isFinite(eng) && eng > 0 ? eng : dist(from, to) / throwSpeed(holder));
     throwInfo = { from, to, base, start: t, dur };
     result.throwTime = round2(dur);
     result.throwStartAt = round2(t);
     result.throwArriveAt = round2(t + dur);
+    verdict = judge ? safeCall(judge, fieldingNow()) : null;
+    if (verdict) syncRunners(verdict);
     phase = 'throw';
     play('swing');
     setPrompt();
@@ -723,6 +771,9 @@ ${userControlled && !isHR ? `
 
   function step(dt) {
     t += dt;
+    for (let i = timers.length - 1; i >= 0; i--) {
+      if (t >= timers[i].at) { const fn = timers[i].fn; timers.splice(i, 1); try { fn(); } catch (e) { console.warn(e); } }
+    }
     if (phase === 'hr') {
       stepRunners(dt);
       const hb = ballAt(t);
@@ -809,8 +860,28 @@ ${userControlled && !isHR ? `
         const recv = fielders.filter((f) => f !== holder).sort((a, c) => dist(a, throwInfo.to) - dist(c, throwInfo.to))[0];
         play('catch');
         if (recv) { holder = recv; }
+        const base = throwInfo.base;
         throwInfo = null;
-        finishSoon(0.45);
+        let wait = 0.45;
+        if (verdict) {
+          // 送球先の塁のアウト／セーフ（エンジンの判定と同じ）
+          const caughtBatter = (pr) => verdict.caught && pr.isBatter;
+          const victim = verdict.runners.find((pr) => pr.out && pr.target === base && !caughtBatter(pr));
+          const contested = verdict.runners.some((pr) => pr.target === base && pr.target > pr.from && !caughtBatter(pr));
+          if (victim) {
+            callout('アウト！', 'good');
+            const r = runners.find((x) => (victim.isBatter ? x.isBatter : !x.isBatter && x.origin === victim.from));
+            if (r) later(() => { r.gone = true; }, 0.35);
+          } else if (contested) callout('セーフ！', 'bad');
+          if (verdict.relay) {
+            wait = Math.max(wait, verdict.relay.arrive - t + 0.6);
+            if (verdict.relay.out) {
+              const br = runners.find((x) => x.isBatter);
+              later(() => { callout('ゲッツー！', 'good'); if (br) br.gone = true; }, Math.max(0, verdict.relay.arrive - t));
+            } else later(() => callout('一塁セーフ！', 'bad'), Math.max(0, verdict.relay.arrive - t));
+          }
+        }
+        finishSoon(wait);
       }
     } else if (phase === 'after') {
       if (t >= doneAt) phase = 'done';

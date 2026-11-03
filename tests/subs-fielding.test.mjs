@@ -339,3 +339,32 @@ test('autoUserPitcher: ユーザー側の継投も CPU 采配に任せられる�
   assert.notEqual(getPitcher(on.state).id, pid);
   assert.equal(on.state.autoUserPitcher, true);
 });
+
+test('previewPlay は守備ビューの送球（throwArriveAt）付きなら resolveBattedBall と同じ判定', () => {
+  const rng = mulberry32(4242);
+  let checked = 0;
+  for (let g = 0; g < 12; g++) {
+    let s = createGame(blue, red, { rng });
+    for (let i = 0; i < 400 && !E.isGameOver(s); i++) {
+      const pi = E.choosePitch(s, rng);
+      const r = pitchContact(s, pi, E.chooseSwing(s, pi, rng), rng);
+      if (!(r.ball && !r.ball.isHomeRun && r.state.pending)) { s = r.state; continue; }
+      const f = { ...autoField(r.state, r.ball, () => 0.99) };
+      if (f.throwTo) {
+        const tt = E.throwTimeFor(r.state, f.fielderId, f.fieldedAt, f.throwTo);
+        f.throwTime = tt; f.throwArriveAt = f.fieldTime + tt;
+      }
+      const pv = E.previewPlay(r.state, r.ball, f);
+      const out = resolveBattedBall(r.state, r.ball, f, rng);
+      assert.equal(pv.kind, out.event.kind);
+      assert.equal(pv.bases, out.event.bases);
+      for (const rr of out.event.runnerResults) {
+        const p = pv.runners.find((x) => x.id === rr.id);
+        assert.equal(p.out, rr.out, `runner ${rr.id}`);
+      }
+      checked++;
+      s = out.state;
+    }
+  }
+  assert.ok(checked > 100, `checked ${checked}`);
+});

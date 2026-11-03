@@ -39,6 +39,7 @@ const BAT_ASSIST = [
   { cursor: 1.9, timing: 2.6, lock: 1.0, ghost: true, flight: 1.3 },   // さいだい
 ];
 const LOCK_BREAKING_K = 0.6;        // 変化球はロックオンを弱める（ストレート系 1）
+const DEBUG_PLAYS = typeof location !== 'undefined' && /[?&]dbg=1\b/.test(location.search); // 検証用: 守備ビューの判定を記録
 const CPU_FIELD_SPEED = 1.5;        // ユーザー攻撃中の CPU 守備ビュー（fieldMode='manual'）の再生速度
 /*
  * 投球のタイミング判定（4 段階）。spread: 制球のばらつき倍率、kmh: 球速の加減、mistake: 失投率の加算（負 = 失投を引き直す確率）
@@ -1937,7 +1938,9 @@ export function createGameScreen(el, ctx) {
     const team = state.teams[side];
     return engine.lineupView(state, side).map((l) => {
       const p = l.player || {};
-      return { id: l.id, name: l.name, pos: l.pos, speed: p.speed, fielding: p.fielding, arm: p.arm, catching: p.catching, color: team.color };
+      let eng = null; // エンジンの守備パラメータ（守備ビューの捕球判定をエンジンと揃える）
+      try { if (typeof engine.fielderParams === 'function' && l.player) eng = engine.fielderParams(l.player, l.pos); } catch (e) { /* ignore */ }
+      return { id: l.id, name: l.name, pos: l.pos, speed: p.speed, fielding: p.fielding, arm: p.arm, catching: p.catching, color: team.color, eng };
     });
   }
 
@@ -1968,6 +1971,10 @@ export function createGameScreen(el, ctx) {
         runnerColor: state.teams[bSide]?.color,
         batterId: batter?.id, batterName: batter?.name,
         sound: ctx.sound,
+        // 守備ビューの走者・アウト／セーフの表示を最終判定（resolveBattedBall）と一致させる
+        previewPlay: typeof engine.previewPlay === 'function' ? (f) => engine.previewPlay(state, ball, f) : null,
+        throwTime: typeof engine.throwTimeFor === 'function' ? (id, from, base) => engine.throwTimeFor(state, id, from, base) : null,
+        suggestThrow: typeof engine.suggestThrow === 'function' ? (f) => engine.suggestThrow(state, ball, f) : null,
         onDone,
       });
       fieldView.start();
@@ -1994,6 +2001,12 @@ export function createGameScreen(el, ctx) {
       res = engine.resolveBattedBall(state, ball, engine.autoField(state, ball, rng), rng);
     }
     bumpDebug('resolves');
+    if (DEBUG_PLAYS && res) {
+      let pv = null;
+      try { pv = result && engine.previewPlay ? engine.previewPlay(state, ball, result) : null; } catch (e) { /* ignore */ }
+      (window.__dokiPlays ||= []).push({ intended: ball.intendedOutcome, type: ball.type, viewCaught: result?.caughtInAir ?? null,
+        throwTo: result?.throwTo ?? null, preview: pv?.kind ?? null, kind: res.event.kind, bases: res.event.bases, user: !wasUserBatting });
+    }
     if (fieldView) { try { fieldView.destroy(); } catch (e) { /* ignore */ } fieldView = null; }
     applyResult(prev, res, { fromField: true, wasUserBatting });
   }

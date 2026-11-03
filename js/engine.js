@@ -2768,7 +2768,7 @@ function computePlay(s, ball, f, rng) {
           const C = coverFielder(s, tgt, F, f.fieldedAt);
           const v = T.throwV0 + (T.throwVArm * C.arm) / 99 + (C.throwBonus || 0);
           const relayArr = arrive + (T.pivot - 0.25 * C.fld) + dist(FIELD.bases[tgt], FIELD.bases[1]) / v
-            + (rng ? gauss(rng) * T.throwNoise * 0.5 : 0);
+            + (rng && f.throwArriveAt == null ? gauss(rng) * T.throwNoise * 0.5 : 0); // 守備ビューの送球は表示どおり（誤差なし）
           relay = { fielderId: C.id, arrive: relayArr, out: false };
           if (batter.arr[1] > relayArr) {
             batter.out = true;
@@ -2814,6 +2814,28 @@ function computePlay(s, ball, f, rng) {
   return {
     kind, bases, runs, scoringIds, outs, runners, caught, infieldPlay, batterOut, tgt, arrive, victim, relay,
     fieldTime, F, outs0, error: !!f.error,
+  };
+}
+
+/**
+ * UI 用: 守備結果 fielding でのプレーの判定を先に見る（state は変更しない・乱数なし）。
+ * 守備ビューの走者の動きとアウト／セーフの表示を、resolveBattedBall の判定と一致させるために使う。
+ * fielding.throwArriveAt を渡せば最終判定と同じ（送球誤差なし）。
+ * @returns {{kind:string, bases:number, caught:boolean, tgt:number|null, arrive:number|null,
+ *   runners:{id:string, from:number, target:number, isBatter:boolean, start:number, arr:Object<number,number>, out:boolean, forced:boolean}[],
+ *   relay:{arrive:number, out:boolean}|null}}
+ */
+export function previewPlay(state, ball, fielding) {
+  if (!state?.pending || !fielding?.fielderId) return null;
+  const f = { ...fielding, fieldedAt: fielding.fieldedAt ?? { ...ball.landing }, fieldTime: Number(fielding.fieldTime ?? ball.hangTime) };
+  const play = computePlay(state, ball, f, null);
+  return {
+    kind: play.kind, bases: play.bases, caught: play.caught, tgt: play.tgt, arrive: play.arrive,
+    relay: play.relay ? { arrive: play.relay.arrive, out: play.relay.out } : null,
+    runners: play.runners.map((r) => ({
+      id: r.id, from: r.from, target: r.onThrow ?? r.target, isBatter: r.isBatter, start: r.start,
+      arr: { ...r.arr }, out: !!r.out || (play.caught && r.isBatter), forced: !!r.forceAtTarget,
+    })),
   };
 }
 
