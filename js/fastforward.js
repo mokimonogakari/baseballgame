@@ -276,7 +276,7 @@ function template() {
       <div class="ff-speeds" role="group" aria-label="はやさ">
         <button type="button" class="ff-btn" data-speed="2" aria-pressed="false">×2</button>
         <button type="button" class="ff-btn" data-speed="4" aria-pressed="false">×4</button>
-        <button type="button" class="ff-btn ff-end" data-speed="end" aria-pressed="false">結果まで</button>
+        <button type="button" class="ff-btn ff-end" data-speed="end" aria-pressed="false">この回の終わりまで</button>
       </div>
       <div class="ff-hint"><kbd>Z</kbd>はやく　<kbd>Esc</kbd>ふつうに見る</div>
       <button type="button" class="ff-btn ff-normal" data-act="normal">ふつうに見る</button>
@@ -489,7 +489,7 @@ export function createFastForward(container, opts = {}) {
       b.classList.toggle('on', v === speed);
       b.setAttribute('aria-pressed', String(v === speed));
     });
-    dom.speedNow.textContent = speed === 'end' ? '結果まで' : `×${speed}`;
+    dom.speedNow.textContent = speed === 'end' ? '回の終わりまで' : `×${speed}`;
     root.style.setProperty('--ff-rate', String(rate()));
     root.dataset.speed = String(speed);
   }
