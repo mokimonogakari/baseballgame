@@ -145,6 +145,9 @@ pitchContact ──(ball=null)────────────────�
   isFoul: false, isHomeRun, batterId,
   intendedOutcome,   // 打撃判定の結果 'groundout'|'flyout'|'single'|'double'|'triple'|'hr'
   runAggro,          // この打球での走者の積極性（-0.3〜0.3、内部用）
+  contactTier,       // 'shin2'|'shin'|'other'（event.contactTier と同じ。バントには無い）
+  timing,            // スイングのタイミング（-1..1、負 = 早い。event.timing と同じ。バントには無い）
+  mismatch?,         // true = 棄却サンプリングで intendedOutcome に合う打球が見つからず次善を選んだ（state.log には ballMismatch として残る）
 }
 ```
 
@@ -366,7 +369,36 @@ batInput = { mode: 'meet'|'power'|'bunt', pos: { x, y }, timing: -1..1, zone? }
 3. 従来の距離帯（0/1/2）へ連続的に写す: 真芯 → 0、それ以外 `dist = 1.9 × clamp((nd − 0.15)/0.85, 0, 1)`（0..1.9、係数表の隣り合う距離帯を線形補間）。真芯は安打 ×1.12・空振り ×0.85。
 4. 上下: **ボールがカーソル中心より上（dy < 0）→ バットがボールの下側に当たりフライ、下 → ゴロ**。`lift = −dy/ry` に弾道 `(trajectory−2)×0.15`、パワーヒッター +0.15 を足し、ゴロアウト ×exp(−0.45·lift)・フライアウト ×exp(+0.45·lift)（カーソル入力のみ）、打球の種類（ゴロ/ライナー/フライ）の選択もずらす。
 5. 方向: タイミングが早い → 引っ張り（`引っ張り側 × −timing × 20°`）、遅い → 流し。カーソルの横ずれ `dx/rx × 10°`（画面右へずれたボールは右方向）。早め（−0.6 < timing < −0.1）で内角を引っ張ると double/hr ×1.1。
-6. event に `dist`（小数）, `band`, `mode`, `contactTier`, `cursor: {rx,ry,coreR}`, `nd` が付く。
+6. event に `dist`（小数）, `band`, `mode`, `contactTier`, `timing`, `cursor: {rx,ry,coreR}`, `nd` が付く。ファウルには `foulDir`, `foulSide` も付く（7.4.2）。
+
+#### 7.4.1 当たりの質・タイミングと打球の形（打席結果の確率は変えない）
+
+`contactTier` とタイミングは **打席結果（single/double/out…）を決めたあと**、`candidateBall` で同じ結果の中の打球の形だけを変える。
+係数表・能力補正の確率はそのまま（上の 3. の真芯の安打 ×1.12 は従来どおり）。
+
+- 当たりの質 `q = (shin2 +1 / shin 0 / other −1) − 0.7 × late`。各範囲 `[a, b]`（ゴロの打球速度、ライナー/フライの距離、ライナーの滞空は逆向き、HR のフェンス越え 2〜28 m）から
+  中心 `0.5 + 0.2q`・幅 ±0.3 の部分区間で選ぶ（shin2 = 上側 0.4〜1.0、shin = 0.2〜0.8、other = 0〜0.6）。
+  **安打（single/double/triple）は強い側だけ寄せる**（`qHitWeak 0`）: 弱すぎる安打は CPU 守備でアウトになり、意図した結果と合わなくなるため。
+  - HR: 真芯はフェンス +12〜28 m 寄り、芯以外は +2〜18 m（フェンスぎりぎり）。
+  - フライアウトの内訳: 芯以外 → 外野フライの一部（25%）を内野フライに、真芯 → 内野フライの一部（30%）をライナー（野手正面の強いライナー）に。
+- タイミング `early = clamp((−timing − 0.1)/0.5, 0, 1)`、`late = clamp((timing − 0.1)/0.5, 0, 1)`
+  - 早い（引っかけ）: 方向は従来どおり引っ張り（`dirShift`）。ゴロアウトはライナーよりゴロ（`r − 0.3·early`）、単打もややゴロ寄り（`0.1·early`）、フライアウトの内野フライの一部（`0.4·early`）がライナーに。
+  - 遅い（差し込まれ）: 方向は逆方向。上の `q` が下がり打球が弱くなる、フライアウトの外野フライの一部（`0.35·late`）が内野フライに、単打はポテン（浅いフライ）寄り（`0.15·(late + 芯以外)`）。
+- 係数は `TUNING` の `qCenter 0.2` `qHalf 0.3` `lateWeak 0.7` `qHitWeak 0` `qHitStrong 1` `earlyAt 0.1` `lateAt 0.1` `timingSpan 0.5`
+  `earlyGround 0.3` `earlySingleGround 0.1` `earlyLiner 0.4` `latePop 0.35` `lateBloop 0.15` `otherPop 0.25` `shin2Liner 0.3`。
+- 目安（ど真ん中の直球、カーソル固定）: 打球速度の平均 真芯 127 / 芯 112 / 芯以外 103 km/h、距離 66 / 56 / 47 m。timing −0.5 で引っ張り方向 +15°・ゴロ率 47%、+0.5 で逆方向・内野フライ率 23%。
+- `generateBall` の棄却サンプリング（`ballTries 14`）はそのまま。CPU 同士で意図と不一致（`ball.mismatch`）の打球は 4.7% → 4.1%（docs/BALANCE.md）。
+
+#### 7.4.2 イベントのフィールド（スイング時）
+
+| フィールド | 値 | 説明 |
+|---|---|---|
+| `event.contactTier` | `'shin2'\|'shin'\|'other'` | 接触の質（空振り・ファウルにも付く。カーソル縁のファウル・バント空振りは 'other'） |
+| `event.timing` | -1..1（小数 2 桁） | スイングのタイミング（負 = 早い、正 = 遅い）。空振り・ファウル・打球すべてのスイングに付く（見送りには無い） |
+| `event.foulDir` | `'pull'\|'oppo'\|'back'\|'tip'` | ファウルのみ。打者から見た向き: timing ≤ −0.15 → 'pull'（引っ張り側のスタンド）、≥ 0.15 → 'oppo'（逆方向）、その間 → 'back'（バックネット）、timing > 0.8 → 'tip'（かすってミットへ）。カーソルの縁でかすったファウルは timing > 0.5 で 'tip'、それ以外 'back' |
+| `event.foulSide` | `'left'\|'right'\|'back'` | ファウルのみ。foulDir を打者の打席（左打者の引っ張り = 'right'）で画面の左右に直したもの（'back'/'tip' は 'back'） |
+
+`foulDirection(timing, rim = false)` も export（UI のプレビュー用。上の規則そのもの）。`state.log` のファウルにも `timing / foulDir / foulSide` が残る。
 
 CPU（`chooseSwing`）は `{ zone, pos, mode, timing }` を返す。`pos = 実際の位置 + 正規乱数 × (0.02 + (100 − 実効ミート)/100 × 0.32)`。
 

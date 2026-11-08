@@ -46,7 +46,7 @@ export const TARGETS = {
 
 /** 1試合の集計 */
 export function gameStats(s, away, home) {
-  const r = { runs: 0, hits: 0, doubles: 0, triples: 0, hr: 0, k: 0, bb: 0, ibb: 0, hbp: 0, sb: 0, cs: 0, sh: 0, sf: 0, dp: 0, e: 0, wp: 0, ab: 0, pa: 0, mistakes: 0 };
+  const r = { runs: 0, hits: 0, doubles: 0, triples: 0, hr: 0, k: 0, bb: 0, ibb: 0, hbp: 0, sb: 0, cs: 0, sh: 0, sf: 0, dp: 0, e: 0, wp: 0, ab: 0, pa: 0, mistakes: 0, bip: 0, gb: 0, fb: 0, ld: 0, pu: 0, mismatch: 0 };
   r.runs = s.score.away.reduce((a, b) => a + b, 0) + s.score.home.reduce((a, b) => a + b, 0);
   r.hits = s.hits.away + s.hits.home;
   r.pitches = s.pitchCount.away + s.pitchCount.home;
@@ -63,6 +63,12 @@ export function gameStats(s, away, home) {
     if (ev.kind === 'sac_fly') r.sf += 1;
     if (ev.wildPitch) r.wp += 1;
     if (ev.pitch?.mistake) r.mistakes += 1;
+    if (ev.ballType && ev.ballType !== 'hr' && !ev.bunt) {
+      r.bip += 1;
+      if (ev.ballType === 'grounder') r.gb += 1; else if (ev.ballType === 'liner') r.ld += 1;
+      else if (ev.ballType === 'popup') r.pu += 1; else r.fb += 1;
+      if (ev.ballMismatch) r.mismatch += 1;
+    }
   }
   r.pa = r.ab + r.bb + r.hbp + r.sh + r.sf;
   r.starterPitches = ((s.pitchesBy?.[away.pitchers[0]] || 0) + (s.pitchesBy?.[home.pitchers[0]] || 0)) / 2;
@@ -117,5 +123,7 @@ if (isMain) {
   console.log(`目標内 ${ok}/${Object.keys(TARGETS).length}`);
   console.log(`打率 ${(h / ab).toFixed(3)} / 出塁率 ${((h + all.bb + all.hbp) / obpDen).toFixed(3)} / 長打率 ${(tb / ab).toFixed(3)}（NPB .241〜.246 / .302〜.309 / .341〜.362）`);
   console.log(`盗塁成功率 ${(100 * all.sb / Math.max(1, all.sb + all.cs)).toFixed(1)}% / 申告敬遠 ${(all.ibb / games).toFixed(2)} / 失投 ${(100 * all.mistakes / all.pitches).toFixed(1)}%/球 / 延長込みイニング ${(all.innings / games).toFixed(2)}`);
+  const pct = (k) => (100 * all[k] / Math.max(1, all.bip)).toFixed(1);
+  console.log(`打球（HR・バント除く）${(all.bip / games).toFixed(1)}/試合: ゴロ ${pct('gb')}% / ライナー ${pct('ld')}% / フライ ${pct('fb')}% / 内野フライ ${pct('pu')}%、意図と不一致（mismatch）${pct('mismatch')}%`);
   console.log(`先攻の勝利 ${all.awayWin} / ${games}`);
 }

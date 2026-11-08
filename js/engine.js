@@ -76,6 +76,12 @@ export const TUNING = {
   cursorMin: 0.35, cursorMax: 0.85, cursorRy: 0.75, cursorCore: 0.3, cursorPower: 0.7, cursorBunt: 1.1,
   cursorDist: 1.9, cursorCoreN: 0.15, cursorRim: 0.15, rimFoul: 0.5, vyK: 0.45, trajLift: 0.15,
   timingDir: 20, hxDir: 10, oppoDir: 8,
+  // 当たりの質（打球の形だけ。打席結果の確率は変えない）: 範囲 [a,b] の中から選ぶ位置を q（−1 弱〜+1 強）で寄せる
+  // 中心 0.5 + qCenter×q、幅 ±qHalf。q = 芯の段階（shin2 +1 / shin 0 / other −1）− lateWeak × 振り遅れ
+  qCenter: 0.2, qHalf: 0.3, lateWeak: 0.7, qHitWeak: 0, qHitStrong: 1,
+  // タイミング: early = clamp((−timing − earlyAt)/timingSpan)、late = clamp((timing − lateAt)/timingSpan)
+  earlyAt: 0.1, lateAt: 0.1, timingSpan: 0.5,
+  earlyGround: 0.3, earlySingleGround: 0.1, earlyLiner: 0.4, latePop: 0.35, lateBloop: 0.15, otherPop: 0.25, shin2Liner: 0.3,
   posNoiseBase: 0.02, posNoiseContact: 0.32,
   // バント
   buntFoul: 0.22, buntFoulNd: 0.22, buntFoulC: 0.10, buntPop: 0.05, buntPopNd: 0.07, buntRimFoul: 0.7,
@@ -1598,7 +1604,7 @@ function endPlateAppearance(s, event, rng = Math.random, advance = true) {
 /** ログ用（打球の軌跡など重いデータを除く） */
 function logCopy(event) {
   const { ball, fielding, logAt, ...rest } = event;
-  if (ball) rest.ballType = ball.type;
+  if (ball) { rest.ballType = ball.type; if (ball.mismatch) rest.ballMismatch = true; }
   return rest;
 }
 
@@ -1616,6 +1622,36 @@ function pullSign(batter, pitcher) {
   if (batter.bats === '左') return 1;
   if (batter.bats === '右') return -1;
   return pitcher?.throws === '左' ? -1 : 1; // 両打ちは投手の逆の打席
+}
+
+const HIT_SET = new Set(['single', 'double', 'triple']);
+
+/** 当たりの質 q（−1.7〜+1）: 芯の段階 shin2 +1 / shin 0 / other −1、振り遅れ（late 0〜1）で弱くなる */
+function contactQuality(tier, late = 0) {
+  const base = tier === 'shin2' ? 1 : tier === 'shin' ? 0 : -1;
+  return base - TUNING.lateWeak * late;
+}
+
+/** 範囲 [a,b] の一様乱数を当たりの質 q で上側（強い）・下側（弱い）へ寄せる。q 未指定は従来どおり全域 */
+function uniQ(rng, a, b, q) {
+  if (!Number.isFinite(q)) return uni(rng, a, b);
+  const c = 0.5 + TUNING.qCenter * q;
+  const lo = clamp(c - TUNING.qHalf, 0, 1);
+  const hi = clamp(c + TUNING.qHalf, 0, 1);
+  return a + (b - a) * (lo + (hi - lo) * rng());
+}
+
+/**
+ * ファウルの飛ぶ向き（打者から見て）。早い → 'pull'（引っ張り側のスタンド）、遅い → 'oppo'（逆方向）、
+ * ほぼジャスト → 'back'（バックネット）、大きく振り遅れ（timing > 0.8）・カーソルの縁でかすった → 'tip'（チップ）
+ */
+export function foulDirection(timing, rim = false) {
+  const t = clamp(Number(timing) || 0, -1, 1);
+  if (t > 0.8) return 'tip';
+  if (rim) return t > 0.5 ? 'tip' : 'back';
+  if (t <= -0.15) return 'pull';
+  if (t >= 0.15) return 'oppo';
+  return 'back';
 }
 
 /**
@@ -1659,12 +1695,16 @@ function swingOutcome(s, batter, pitcher, type, loc, bat, fat, rng, pitchPower =
   const ps = pullSign(batter, pitcher);
   let dirShift = ps * -timing * T.timingDir + hx * T.hxDir;
   if (skillOn(batter, '流し打ち', s) && timing > 0) dirShift -= ps * SKILL_FX['流し打ち'].oppo;
-  const hint = { lift, dirShift, noPull: skillOn(batter, '広角打法', s) };
+  const early = clamp((-timing - T.earlyAt) / T.timingSpan, 0, 1);
+  const late = clamp((timing - T.lateAt) / T.timingSpan, 0, 1);
+  // tier / early / late / q は打球の形だけに使う（打席結果の確率には入れない）
+  const hint = { lift, dirShift, noPull: skillOn(batter, '広角打法', s), tier, timing, early, late };
 
   if (mode === 'bunt') {
     info.dist = r2(nd);
     if (nd > 1) {
       const out = nd <= 1 + T.cursorRim && rng() < T.buntRimFoul ? 'foul' : 'strike';
+      if (out === 'foul') info.rim = true;
       return { outcome: out, hint, info: { ...info, contactTier: 'other' } };
     }
     const c = (eb.contact - 50) / 49;
@@ -1679,12 +1719,14 @@ function swingOutcome(s, batter, pitcher, type, loc, bat, fat, rng, pitchPower =
   if (usePos) {
     if (nd > 1) {
       const out = nd <= 1 + T.cursorRim && rng() < T.rimFoul ? 'foul' : 'strike';
+      if (out === 'foul') info.rim = true;
       info.dist = 2;
       return { outcome: out, hint, info };
     }
     d = tier === 'shin2' ? 0 : T.cursorDist * clamp((nd - T.cursorCoreN) / (1 - T.cursorCoreN), 0, 1);
   }
   info.dist = usePos ? r2(d) : d;
+  hint.q = contactQuality(tier, late);
   const core = swingCore(batter, pitcher, type, mode, d, band, loc.inZone, fat, ctx);
   const probs = core.probs;
   info.powerEdge = core.edge;
@@ -1869,6 +1911,12 @@ function pitchCore(s, pitchInput, batInput, rng) {
     event.band = r.info.band;
     event.mode = r.info.mode;
     event.contactTier = r.info.contactTier;
+    event.timing = r2(clamp(Number(batInput.timing) || 0, -1, 1));
+    if (outcome === 'foul') {
+      event.foulDir = foulDirection(event.timing, !!r.info.rim);
+      const side = pullSign(batter, pitcher) * (event.foulDir === 'pull' ? 1 : event.foulDir === 'oppo' ? -1 : 0);
+      event.foulSide = side > 0 ? 'right' : side < 0 ? 'left' : 'back';
+    }
     if (r.info.cursor) { event.cursor = r.info.cursor; event.nd = r.info.nd; }
     if (r.info.mode === 'bunt') event.bunt = true;
   }
@@ -2271,41 +2319,64 @@ function buildPath(ball, D, T) {
   return ball;
 }
 
-/** 打席結果（intendedOutcome）に合いそうな打球の候補を1つ作る */
+/**
+ * 打席結果（intendedOutcome）に合いそうな打球の候補を1つ作る。
+ * hint.q（当たりの質）で同じ結果の中の強さ（ゴロの速さ・ライナー/フライの距離・HR の飛距離）を寄せ、
+ * hint.early（早い: ゴロ・ライナー寄り）/ hint.late（遅い: ポップフライ・ポテン寄り）で打球の種類を寄せる。
+ */
 function candidateBall(s, intended, batter, rng, id, hint = null) {
+  const T_ = TUNING;
   const pull = hint?.noPull ? 0 : batter.bats === '左' ? 1 : batter.bats === '右' ? -1 : 0;
   let dir = clamp(uni(rng, -44, 44) * 0.75 + gauss(rng) * 9 + pull * 7 + (hint?.dirShift ?? 0), -44, 44);
   let r = rng();
+  const q = hint?.q;
+  const qn = Number.isFinite(q) ? q : 0;
+  const early = hint?.early ?? 0;
+  const late = hint?.late ?? 0;
+  // 安打は弱い側を浅く寄せる（弱すぎる安打は CPU 守備でアウトになり、意図した結果と合わなくなる）
+  const qs = !Number.isFinite(q) ? q : HIT_SET.has(intended) ? (q < 0 ? q * T_.qHitWeak : q * T_.qHitStrong) : q;
+  const U = (a, b) => uniQ(rng, a, b, qs);      // 強いほど大きい値
+  const Ui = (a, b) => uniQ(rng, a, b, Number.isFinite(qs) ? -qs : qs); // 強いほど小さい値（ライナーの滞空）
   // 打球角度（カーソルの上下・弾道）: ゴロ/ライナー/フライの選び方をずらす
   if (hint && (intended === 'single' || intended === 'groundout')) r = clamp(r + hint.lift * 0.25, 0, 0.999);
   if (hint && intended === 'flyout' && hint.lift > 0.4 && r < 0.62 && rng() < (hint.lift - 0.4)) r = 0.7;
+  // 早い（引っかけ）→ ゴロ寄り、遅い（差し込まれ）→ 単打はポテン寄り
+  if (intended === 'groundout') r = clamp(r - early * T_.earlyGround, 0, 0.999);
+  if (intended === 'single') r = clamp(r - early * T_.earlySingleGround + (late + Math.max(0, -qn)) * T_.lateBloop, 0, 0.999);
+  if (intended === 'flyout' && hint && !hint.jam) {
+    // 外野フライ(r<0.62) / 内野フライ(<0.85) / ライナー。芯を外す・振り遅れ → 内野フライ、真芯・早い → ライナー
+    const toPop = Math.max(0, -qn) * T_.otherPop + late * T_.latePop;
+    const toLiner = Math.max(0, qn) * T_.shin2Liner + early * T_.earlyLiner;
+    if (r < 0.62 && toPop > 0 && rng() < toPop) r = 0.7;
+    else if (r >= 0.62 && r < 0.85 && toLiner > 0 && rng() < toLiner) r = 0.9;
+  }
   let type; let D = 0; let T = 0; let exit = 0;
   switch (intended) {
     case 'groundout':
-      if (hint?.jam) { type = 'grounder'; exit = uni(rng, TUNING.jamGrounder[0], TUNING.jamGrounder[1]); } // 詰まったボテボテのゴロ
-      else if (r < 0.9) { type = 'grounder'; exit = uni(rng, 80, 150); } else { type = 'liner'; D = uni(rng, 30, 55); T = uni(rng, 0.8, 1.3); }
+      if (hint?.jam) { type = 'grounder'; exit = uni(rng, T_.jamGrounder[0], T_.jamGrounder[1]); } // 詰まったボテボテのゴロ
+      else if (r < 0.9) { type = 'grounder'; exit = U(80, 150); } else { type = 'liner'; D = U(30, 55); T = Ui(0.8, 1.3); }
       break;
     case 'flyout':
       if (hint?.jam) {
         // 詰まった内野フライ（押し負けた打球）。一部は詰まった浅い外野フライ
-        if (r < TUNING.jamPopup) { type = 'popup'; D = uni(rng, 8, 40); T = uni(rng, 3.8, 5.2); }
+        if (r < T_.jamPopup) { type = 'popup'; D = uni(rng, 8, 40); T = uni(rng, 3.8, 5.2); }
         else { type = 'fly'; D = uni(rng, 48, 70); T = 2.6 + D / 40 + uni(rng, -0.3, 0.3); }
-      } else if (r < 0.62) { type = 'fly'; D = uni(rng, 55, 100); T = 2.6 + D / 40 + uni(rng, -0.3, 0.4); }
+      } else if (r < 0.62) { type = 'fly'; D = U(55, 100); T = 2.6 + D / 40 + uni(rng, -0.3, 0.4); }
       else if (r < 0.85) { type = 'popup'; D = uni(rng, 8, 42); T = uni(rng, 4.3, 6.0); }
-      else { type = 'liner'; D = uni(rng, 30, 62); T = uni(rng, 0.9, 1.4); }
+      else { type = 'liner'; D = U(30, 62); T = Ui(0.9, 1.4); }
       break;
     case 'single':
-      if (r < 0.45) { type = 'grounder'; exit = uni(rng, 115, 170); }
-      else if (r < 0.8) { type = 'liner'; D = uni(rng, 40, 72); T = uni(rng, 1.0, 1.8); }
-      else { type = 'fly'; D = uni(rng, 45, 72); T = uni(rng, 2.6, 3.6); }
+      if (r < 0.45) { type = 'grounder'; exit = U(115, 170); }
+      else if (r < 0.8) { type = 'liner'; D = U(40, 72); T = Ui(1.0, 1.8); }
+      else { type = 'fly'; D = U(45, 72); T = uni(rng, 2.6, 3.6); }
       break;
     case 'double':
-      if (r < 0.45) { type = 'liner'; D = uni(rng, 62, 98); T = uni(rng, 1.3, 2.2); }
-      else if (r < 0.85) { type = 'fly'; D = uni(rng, 78, 110); T = uni(rng, 2.6, 3.8); }
-      else { type = 'grounder'; exit = uni(rng, 150, 175); dir = (rng() < 0.5 ? -1 : 1) * uni(rng, 36, 44); }
+      if (r < 0.45) { type = 'liner'; D = U(62, 98); T = Ui(1.3, 2.2); }
+      else if (r < 0.85) { type = 'fly'; D = U(78, 110); T = uni(rng, 2.6, 3.8); }
+      else { type = 'grounder'; exit = U(150, 175); dir = (rng() < 0.5 ? -1 : 1) * uni(rng, 36, 44); }
       break;
     case 'triple':
-      if (r < 0.5) { type = 'fly'; D = uni(rng, 92, 120); T = uni(rng, 2.8, 3.8); } else { type = 'liner'; D = uni(rng, 85, 110); T = uni(rng, 1.8, 2.6); }
+      if (r < 0.5) { type = 'fly'; D = U(92, 120); T = uni(rng, 2.8, 3.8); } else { type = 'liner'; D = U(85, 110); T = Ui(1.8, 2.6); }
       break;
     default: // hr
       type = 'fly'; T = uni(rng, 4.6, 6.0);
@@ -2314,9 +2385,12 @@ function candidateBall(s, intended, batter, rng, id, hint = null) {
   const ball = {
     id, type, dirDeg: r2(dir), exitSpeed: Math.round(exit), landing: null, path: [], hangTime: 0,
     isFoul: false, isHomeRun: intended === 'hr', batterId: batter.id, intendedOutcome: intended,
-    runAggro: r2(uni(rng, -1, 1) * TUNING.runAggro),
+    runAggro: r2(uni(rng, -1, 1) * T_.runAggro),
   };
-  if (intended === 'hr') { ball.type = 'hr'; D = fence + uni(rng, 2, 28); }
+  if (hint?.tier) ball.contactTier = hint.tier;
+  if (Number.isFinite(hint?.timing)) ball.timing = r2(hint.timing);
+  // HR: 真芯は飛距離 +8〜15 m 寄り（フェンス +12〜28）、芯以外はフェンスぎりぎり寄り（+2〜18）
+  if (intended === 'hr') { ball.type = 'hr'; D = fence + U(2, 28); }
   else if (type !== 'grounder') D = Math.min(D, fence - 1.5);
   return buildPath(ball, D, T);
 }
