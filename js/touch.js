@@ -196,7 +196,7 @@ export function initTouch({ stage, wrap, getGame, getCurrent, getScale }) {
     }
     if (drag || typeof g.dragCursor !== 'function') return;
     if (!isPortrait() && e.clientX > window.innerWidth * 0.72) return; // 横向き: 右側は Z/X 用に空けておく（縦向きはボタンがフィールドの下）
-    if (e.target.closest?.('button, input, select, textarea, a, .sb, .fv, .opp-modal')) return;
+    if (e.target.closest?.('button, input, select, textarea, a, .sb, .fv, .ff, .opp-modal')) return;
     const p = toStage(e.clientX, e.clientY);
     let zone = false;
     try { zone = !!g.touchZoneDown?.(p.x, p.y); } catch (er) { console.error(er); }
@@ -231,7 +231,8 @@ export function initTouch({ stage, wrap, getGame, getCurrent, getScale }) {
   const set = (k, v, fn) => { if (last[k] !== v) { last[k] = v; fn(v); } };
   sync = function syncNow() {
     const g = game();
-    const on = isCoarse() && !!g && !isRotateBlocking();
+    // 守備オートの早送り（.ff）は自前の大きなボタンを持つので、タッチ操作は隠す
+    const on = isCoarse() && !!g && !isRotateBlocking() && !stage.querySelector('#screen-game .ff');
     set('hidden', !on, (v) => { ui.hidden = v; if (v) releaseAll(); });
     if (!on) return;
     const root = stage.querySelector('#screen-game .game');

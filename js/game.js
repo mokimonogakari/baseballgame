@@ -19,6 +19,7 @@
  *   watchPlays: 'all'（既定: ユーザーの打球は毎回 CPU 守備ビューを早送りで見せる。タップ / Enter / S でスキップ）
  *              | 'big'（長打・走者が動くプレー・際どいプレーだけ守備ビュー。それ以外は試合画面で打球の飛行だけ）
  *              | 'off'（従来: 試合画面で打球の飛行と落下点だけ）
+ *   fastForward: 'on'（既定: pitchMode 'cpu' かつ fieldMode 'auto' のとき、守備の半イニングを早送り画面 js/fastforward.js で見せる）| 'off'
  *   battingAssist: 0|1|2|3|null（null = 自動: タッチ端末 2、それ以外 1）。カーソル・タイミング幅の拡大、ロックオン、着弾点の早出し
  * 采配（選手交代）は js/subs.js のメニュー（ヘッダーの「さいはい」ボタン / 投球前の Esc）。
  */
@@ -29,6 +30,7 @@ import { createFieldingView } from './fielding.js';
 import { openSubsMenu } from './subs.js';
 import { createCommentary } from './commentary.js';
 import { stadiumSVG } from './stadium.js';
+import { createFastForward } from './fastforward.js';
 
 // ---- 試合形式（設定 pitchMode / fieldMode / battingAssist で切り替え。createGameScreen 内の manualPitching() など） ----
 /**
@@ -520,6 +522,8 @@ export function createGameScreen(el, ctx) {
   let duckTimer = 0;
   let fieldView = null;          // 守備ビュー（fielding.js）
   let subsMenu = null;           // 采配メニュー（subs.js）
+  let ffView = null;             // 守備オートの早送り（fastforward.js）
+  let ffDeclinedKey = '';        // 「ふつうに見る」を選んだ半イニング（その回は早送りしない）
   let logSeen = 0;               // 表示済みの state.log の長さ（交代イベント検出用）
   let holdStart = 0;             // 矢印を押し始めた時刻（カーソル加速用。全部離したら 0）
   const talk = createCommentary(Math.random); // 実況
@@ -1489,6 +1493,11 @@ export function createGameScreen(el, ctx) {
       showSubs(takeNewSubs(), () => enterReady());
       return;
     }
+    // 守備オート（CPU が投げて CPU が守る）: 半イニングを早送りで見せる（設定 fastForward、既定 'on'）
+    if (fastForwardOn() && autoFielding() && !state.pending && !engine.isGameOver(state) && ffDeclinedKey !== halfKey()) {
+      startFastForward();
+      return;
+    }
     // 打席の切り替わり: 打者紹介の実況（結果の実況を少し読ませてから）
     const side = battingSide();
     const key = `${side}:${state.batterIndex?.[side] ?? ''}:${engine.getBatter(state)?.id ?? ''}`;
@@ -1507,6 +1516,61 @@ export function createGameScreen(el, ctx) {
     updateChance(newAtBat);
     render();
     scheduleAutoPitch();
+  }
+
+  const halfKey = (s = state) => `${s.inning}${s.half}`;
+  /** 守備オートの早送りを使うか（投球 CPU・守備オート・fastForward が 'off' でない） */
+  const fastForwardOn = () => ctx.settings?.fastForward !== 'off' && fieldMode() === 'auto' && !manualPitching();
+
+  /** 守備の半イニングを早送り画面（js/fastforward.js）で進める。state・成績・ログは onPlay で受け取る */
+  function startFastForward() {
+    cancel(autoPitchTimer);
+    autoPitchTimer = 0;
+    phase = 'fastforward';
+    if (dom.overlay) dom.overlay.className = 'overlay';
+    const speed = [2, 4, 'end'].includes(ctx.settings?.ffSpeed) ? ctx.settings.ffSpeed : 2;
+    ffView = createFastForward(dom.root, {
+      engine, state, rng, speed, userSide: userSide(), sound: ctx.sound,
+      onPlay(event, st, step) {
+        const prev = step.prev;
+        const before = engine.getBatter(prev);
+        const chip = chipFor(event);
+        if (chip && before) (atBatChips[before.id] ||= []).push(chip);
+        if (step.ball && !step.ball.isHomeRun) bumpDebug('inplay');
+        if (step.resolves) bumpDebug('resolves');
+        state = st;
+        logSeen = (st.log || []).length; // 交代は早送りのログに出したので、あとで交代のオーバーレイを出さない
+        // 実況（ティッカー）: 打席の結果のときだけ
+        if (chip || event.kind === 'hbp' || event.kind === 'ibb') {
+          let line = null;
+          const prevSide = battingSide(prev);
+          try {
+            const pid = engine.getPitcher(prev)?.id;
+            line = talk.result(talkCtx({
+              event, prevLead: leadOf(prev, prevSide), lead: leadOf(st, prevSide), over: engine.isGameOver(st),
+              halfChanged: battingSide(st) !== prevSide, stats: st.stats?.[before?.id] || {},
+              pitcherK: st.stats?.[pid]?.k ?? 0, outs: st.outs ?? 0,
+            }, prev));
+          } catch (e) { console.warn(e); }
+          const fact = event.text || overlayFor(event);
+          tickerText = line ? `${fact ? `${fact}　` : ''}${line}` : fact;
+        }
+      },
+      onDone(st, info) {
+        const v = ffView;
+        ffView = null;
+        try { v?.destroy(); } catch (e) { /* ignore */ }
+        if (destroyed) return;
+        state = st;
+        logSeen = (st.log || []).length;
+        if (info.reason === 'normal' || info.reason === 'error' || info.reason === 'limit') ffDeclinedKey = halfKey();
+        lastResultAt = 0;
+        phase = 'resolve';
+        render();
+        if (['normal', 'error', 'limit', 'notDefending'].includes(info.reason) && !engine.isGameOver(state)) enterReady(); // 同じ半イニングの続きをふつうに
+        else afterResult(); // 3 アウト → 攻守交代の表示 → 打席 / 試合終了 → GAME SET
+      },
+    });
   }
 
   /** ユーザーの守備中で、CPU が代わりに投げる状態か */
@@ -2546,7 +2610,7 @@ export function createGameScreen(el, ctx) {
 
   // ---------- 采配（選手交代） ----------
   function canOpenSubs() {
-    return !!state && phase === 'ready' && pitchStep !== 'windup' && !subsMenu && !fieldView && !state.pending && !flight
+    return !!state && phase === 'ready' && pitchStep !== 'windup' && !subsMenu && !fieldView && !ffView && !state.pending && !flight
       && !engine.isGameOver(state) && typeof openSubsMenu === 'function';
   }
 
@@ -2676,6 +2740,7 @@ export function createGameScreen(el, ctx) {
   // ---------- input ----------
   function handleKey(key) {
     if (destroyed || !state) return;
+    if (ffView) { ffView.handleKey(key === 'swing' ? 'z' : key); return; } // 早送り: Z/Enter = はやく、Esc/X = ふつうに見る
     if (fxSkip && ['z', 'x', 'enter', 'swing'].includes(key)) { fxSkip(); return; } // 演出のスキップ
     if (key === 'swing' && (subsMenu || fieldView || !userBatting())) key = 'z'; // タッチの大ボタン: 打席以外は Z と同じ
     if (subsMenu) { subsMenu.handleKey(key); return; }
@@ -2931,7 +2996,7 @@ export function createGameScreen(el, ctx) {
   /** Esc を試合画面で使うか（采配メニュー表示中・開ける状態・守備中） */
   function isCapturingEsc() {
     if (destroyed || !state) return false;
-    return !!subsMenu || !!fieldView || canOpenSubs();
+    return !!subsMenu || !!fieldView || !!ffView || canOpenSubs();
   }
 
   // ---------- lifecycle ----------
@@ -2982,6 +3047,7 @@ export function createGameScreen(el, ctx) {
 
   function destroy() {
     destroyed = true;
+    if (ffView) { const v = ffView; ffView = null; try { v.destroy(); } catch (e) { /* ignore */ } }
     if (rafId) cancelAnimationFrame(rafId);
     rafId = 0;
     if (loopRaf) cancelAnimationFrame(loopRaf);

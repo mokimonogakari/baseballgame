@@ -224,6 +224,8 @@ const SET_GROUPS = [
     help: { manual: '追う・捕る・投げるを全部自分で', assist: '追球はおまかせ、送球だけ選ぶ', auto: '守備は全部おまかせ' } },
   { tab: 'play', key: 'watchPlays', label: '打球の見せ方', cls: 'seg-3', opts: [['all', 'ぜんぶ'], ['big', '大事な場面'], ['off', 'みせない']],
     help: { all: '毎回、守備と走者の動きを見せる（タップでスキップ）', big: '長打・走者が動く・際どいプレーだけ見せる', off: '打球が飛ぶところだけ（テンポ重視）' } },
+  { tab: 'play', key: 'fastForward', label: '守備オートの見せ方', opts: [['on', '早送り'], ['off', 'ふつう']],
+    help: { on: '投球CPU・守備オートのとき、守備の回を早送りで見せる（Zではやく、Escでふつうに）', off: '守備の回も1球ずつふつうに見せる' } },
   { tab: 'play', key: 'cursorSpeed', label: 'カーソル速度', cls: 'seg-vol', opts: [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5']],
     help: { 1: 'ゆっくり（正確に動かせる）', 2: 'ややゆっくり', 3: 'ふつう', 4: 'ややはやい', 5: 'とてもはやい' } },
   { tab: 'sound', key: 'sound', label: '効果音', opts: [[true, 'オン'], [false, 'オフ']], help: { true: 'ヒット音や歓声が鳴る', false: '効果音を消す' } },

@@ -33,6 +33,8 @@ const PORTRAIT_MIN_H = 880;
 /** 縦向きの試合画面: 1280×720 のステージから切り出す範囲（打席 = ゾーン・投手・打者・捕手 / 守備 = ダイヤモンドと外野） */
 const CROP_BAT = { x: 260, y: 130, w: 760, h: 590 };
 const CROP_FIELD = { x: 200, y: 120, w: 880, h: 580 };
+/** 守備オートの早送り（js/fastforward.js）: ステージ中央の縦 1 列（css/portrait.css が .ff をこの範囲に並べ直す） */
+const CROP_FF = { x: 400, y: 0, w: 480, h: 720 };
 /** 縦向きの試合画面で、ステージの下にタッチ操作のために残す最低の高さ（CSS px） */
 const PORTRAIT_MIN_CTL = 228;
 const coarseMQ = typeof matchMedia === 'function' ? matchMedia('(pointer: coarse)') : { matches: false };
@@ -41,6 +43,7 @@ let portraitView = '';
 function portraitNow(w, h) { return !!coarseMQ.matches && h > w; }
 function portraitGameView() {
   if (current !== 'game') return '';
+  if (screens.game.querySelector('.ff')) return 'ff';
   return screens.game.querySelector('.fv') ? 'field' : 'bat';
 }
 /** 1280×720 のステージを画面に収める。#stage-wrap の padding = safe-area（ノッチ）を除いた領域で計算 */
@@ -66,12 +69,15 @@ function fitStage() {
   }
   if (portraitView) {
     // 試合: 1280×720 の中央（守備ビューはダイヤモンド全体）を切り出して横幅いっぱいに。上は情報バー、下はタッチ操作
-    const crop = portraitView === 'field' ? CROP_FIELD : CROP_BAT;
+    const crop = portraitView === 'ff' ? CROP_FF : portraitView === 'field' ? CROP_FIELD : CROP_BAT;
     const padT = px(cs.paddingTop);
-    const top = Math.max(0, hud.height() - padT); // 情報バーは safe-area の上端から（ステージは padding の内側）
+    let top = Math.max(0, hud.height() - padT); // 情報バーは safe-area の上端から（ステージは padding の内側）
+    // 早送りは画面いっぱい（タッチ操作は出さない）。それ以外は下にタッチ操作の高さを残す
+    const minCtl = portraitView === 'ff' ? 0 : PORTRAIT_MIN_CTL;
     let scale = w / crop.w;
-    if (h - top - crop.h * scale < PORTRAIT_MIN_CTL) scale = Math.max(0.05, (h - top - PORTRAIT_MIN_CTL) / crop.h);
+    if (h - top - crop.h * scale < minCtl) scale = Math.max(0.05, (h - top - minCtl) / crop.h);
     const offX = (w - crop.w * scale) / 2;
+    if (portraitView === 'ff') top = Math.max(top, Math.floor((h - crop.h * scale) / 2)); // 早送りは上下中央に
     stageScale = scale;
     stage.style.width = '1280px';
     stage.style.height = '720px';
@@ -104,7 +110,7 @@ setInterval(() => {
 }, 100);
 
 const SETTINGS_KEY = 'dokidoki.settings';
-const DEFAULTS = { innings: 3, difficulty: 'normal', sound: true, music: true, musicVolume: 0.7, cursorSpeed: 3, pitchMode: 'manual', fieldMode: 'assist', watchPlays: 'all', battingAssist: null };
+const DEFAULTS = { innings: 3, difficulty: 'normal', sound: true, music: true, musicVolume: 0.7, cursorSpeed: 3, pitchMode: 'manual', fieldMode: 'assist', watchPlays: 'all', fastForward: 'on', battingAssist: null };
 function loadSettings() {
   const out = { ...DEFAULTS };
   try {
@@ -118,6 +124,7 @@ function loadSettings() {
     if (['manual', 'cpu'].includes(o.pitchMode)) out.pitchMode = o.pitchMode;
     if (['manual', 'assist', 'auto'].includes(o.fieldMode)) out.fieldMode = o.fieldMode;
     if (['all', 'big', 'off'].includes(o.watchPlays)) out.watchPlays = o.watchPlays;
+    if (['on', 'off'].includes(o.fastForward)) out.fastForward = o.fastForward;
     if (o.battingAssist === null || [0, 1, 2, 3].includes(o.battingAssist)) out.battingAssist = o.battingAssist ?? null;
   } catch (e) { /* ignore */ }
   return out;
@@ -131,6 +138,7 @@ function saveSettings(patch) {
   if ('pitchMode' in p && !['manual', 'cpu'].includes(p.pitchMode)) delete p.pitchMode;
   if ('fieldMode' in p && !['manual', 'assist', 'auto'].includes(p.fieldMode)) delete p.fieldMode;
   if ('watchPlays' in p && !['all', 'big', 'off'].includes(p.watchPlays)) delete p.watchPlays;
+  if ('fastForward' in p && !['on', 'off'].includes(p.fastForward)) delete p.fastForward;
   if ('battingAssist' in p && !(p.battingAssist === null || [0, 1, 2, 3].includes(p.battingAssist))) delete p.battingAssist;
   Object.assign(settings, p);
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
