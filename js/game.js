@@ -15,7 +15,10 @@
  *   pitchMode: 'manual'（既定: 球種ボタン → コース → 投げる＋タイミングリングの 2 度押し）| 'cpu'（CPU が自動で投げる。Z/タップで早送り）
  *   fieldMode: 'assist'（既定: 守備ビューで野手が自動で捕球、ユーザーは送球先だけ選ぶ）| 'manual'（守備ビューで野手を操作）
  *              | 'auto'（CPU 守備で即解決し、試合画面で打球の飛行と落下点を見せる）
- *              ユーザーの攻撃中は常に CPU 守備（'auto'）。fieldMode='manual' の時だけ CPU 守備ビューを 1.5 倍速で見せる（タップでスキップ）
+ *              ユーザーの攻撃中は常に CPU 守備。見せ方は watchPlays で決める
+ *   watchPlays: 'all'（既定: ユーザーの打球は毎回 CPU 守備ビューを早送りで見せる。タップ / Enter / S でスキップ）
+ *              | 'big'（長打・走者が動くプレー・際どいプレーだけ守備ビュー。それ以外は試合画面で打球の飛行だけ）
+ *              | 'off'（従来: 試合画面で打球の飛行と落下点だけ）
  *   battingAssist: 0|1|2|3|null（null = 自動: タッチ端末 2、それ以外 1）。カーソル・タイミング幅の拡大、ロックオン、着弾点の早出し
  * 采配（選手交代）は js/subs.js のメニュー（ヘッダーの「さいはい」ボタン / 投球前の Esc）。
  */
@@ -40,7 +43,8 @@ const BAT_ASSIST = [
 ];
 const LOCK_BREAKING_K = 0.6;        // 変化球はロックオンを弱める（ストレート系 1）
 const DEBUG_PLAYS = typeof location !== 'undefined' && /[?&]dbg=1\b/.test(location.search); // 検証用: 守備ビューの判定を記録
-const CPU_FIELD_SPEED = 1.5;        // ユーザー攻撃中の CPU 守備ビュー（fieldMode='manual'）の再生速度
+const CPU_FIELD_SPEED = 1.5;        // ユーザー攻撃中の CPU 守備ビュー（watchPlays）の再生速度
+const BIG_CLOSE_S = 0.3;            // watchPlays='big': 走者と送球の到達の差がこれ未満なら「際どい」として見せる
 /*
  * 投球のタイミング判定（4 段階）。spread: 制球のばらつき倍率、kmh: 球速の加減、mistake: 失投率の加算（負 = 失投を引き直す確率）
  * 縮むリングが制球リング（目標）に重なった瞬間との差 |r−1|（r = 縮むリングの半径 / 目標の半径）で判定する。
@@ -562,6 +566,8 @@ export function createGameScreen(el, ctx) {
   const manualPitching = () => ctx.settings?.pitchMode !== 'cpu';
   /** 守備の操作（'manual' | 'assist' | 'auto'。既定 'assist'） */
   const fieldMode = () => (['manual', 'assist', 'auto'].includes(ctx.settings?.fieldMode) ? ctx.settings.fieldMode : 'assist');
+  /** ユーザーの打球の見せ方（'all' | 'big' | 'off'。既定 'all'） */
+  const watchPlays = () => (['all', 'big', 'off'].includes(ctx.settings?.watchPlays) ? ctx.settings.watchPlays : 'all');
   /** 打撃アシストのレベル 0〜3（null/未設定 = タッチ端末 2・デスクトップ 1） */
   const assistLevel = () => {
     const v = ctx.settings?.battingAssist;
@@ -1954,13 +1960,51 @@ export function createGameScreen(el, ctx) {
     showPitchInfo(prev, res?.event);
     if (res?.ball && !res.ball.isHomeRun && res.state?.pending) {
       // 守備の操作: ユーザーの守備中は fieldMode（auto = 即解決 / assist・manual = 守備ビュー）。
-      // ユーザーの攻撃中は CPU 守備で即解決（fieldMode='manual' の時だけ CPU 守備ビューを早送りで見せる）
+      // ユーザーの攻撃中は CPU 守備。watchPlays で CPU 守備ビュー（早送り・スキップ可）を見せるか決める
       const userFieldingNow = battingSide(prev) !== (prev.userSide || 'away');
       bumpDebug('inplay');
-      const mode = fieldMode();
-      if (userFieldingNow ? mode !== 'auto' : mode === 'manual') startInPlay(prev, res);
-      else autoInPlay(prev, res);
+      if (userFieldingNow) {
+        if (fieldMode() !== 'auto') startInPlay(prev, res);
+        else autoInPlay(prev, res);
+        return;
+      }
+      const watch = watchPlays();
+      if (watch === 'all') {
+        let af = null;
+        try { af = engine.autoField(res.state, res.ball, rng); } catch (e) { console.warn(e); }
+        startInPlay(prev, res, af);
+        return;
+      }
+      if (watch === 'big') {
+        let af = null;
+        try { af = engine.autoField(res.state, res.ball, rng); } catch (e) { console.warn(e); }
+        const big = !af || isWatchWorthy(res.state, res.ball, af);
+        if (DEBUG_PLAYS) (window.__dokiWatch ||= []).push({ big, type: res.ball.type, intended: res.ball.intendedOutcome });
+        if (big) startInPlay(prev, res, af);
+        else autoInPlay(prev, res, af);
+        return;
+      }
+      autoInPlay(prev, res);
     } else applyResult(prev, res);
+  }
+
+  /**
+   * watchPlays='big' の判定: CPU 守備の結果 f（autoField）を previewPlay で見て、
+   * 長打・失策・併殺・犠飛・野選、走者が進むプレー、際どいプレー（走者と送球の到達差 < BIG_CLOSE_S）なら true
+   */
+  function isWatchWorthy(st, ball, f) {
+    if (typeof engine.previewPlay !== 'function') return true;
+    let pv = null;
+    try { pv = engine.previewPlay(st, ball, f); } catch (e) { console.warn(e); }
+    if (!pv) return true;
+    if (f?.error || ['error', 'double_play', 'sac_fly', 'fielders_choice', 'sac_bunt', 'hr'].includes(pv.kind)) return true;
+    if (pv.kind === 'hit' && pv.bases >= 2) return true;
+    const rs = Array.isArray(pv.runners) ? pv.runners : [];
+    if (rs.some((r) => !r.isBatter && r.target > r.from)) return true;
+    const near = (a, b) => Number.isFinite(Number(a)) && Number.isFinite(Number(b)) && Math.abs(Number(a) - Number(b)) < BIG_CLOSE_S;
+    if (pv.tgt && rs.some((r) => r.target === pv.tgt && r.target > r.from && !(pv.caught && r.isBatter) && near(r.arr?.[pv.tgt], pv.arrive))) return true;
+    if (pv.relay && rs.some((r) => r.isBatter && near(r.arr?.[1], pv.relay.arrive))) return true;
+    return false;
   }
 
   /** 検証用カウンタ（.game の data-dbg-inplay / data-dbg-resolves。打球 1 つにつき resolveBattedBall 1 回） */
@@ -1971,7 +2015,7 @@ export function createGameScreen(el, ctx) {
   }
 
   // ---------- 打球 → CPU 守備で即解決（試合画面で打球の飛行を見せる） ----------
-  function autoInPlay(prev, res) {
+  function autoInPlay(prev, res, pre = null) {
     if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
     phase = 'inplay';
     const wasUserBatting = battingSide(prev) === (prev.userSide || 'away');
@@ -1979,7 +2023,8 @@ export function createGameScreen(el, ctx) {
     const ball = res.ball;
     let out = null;
     for (let i = 0; i < 3 && !out; i++) {
-      try { out = engine.resolveBattedBall(res.state, ball, engine.autoField(res.state, ball, rng), rng); } catch (e) { console.warn(e); }
+      // pre: watchPlays='big' で判定に使った CPU 守備の結果（1 回目はそれで解決する）
+      try { out = engine.resolveBattedBall(res.state, ball, (i === 0 && pre) || engine.autoField(res.state, ball, rng), rng); } catch (e) { console.warn(e); }
     }
     if (out) bumpDebug('resolves');
     if (!out) { console.error('resolveBattedBall failed'); out = { state: { ...res.state, pending: null }, event: { kind: 'out', text: 'アウト', runs: 0 } }; }
@@ -2062,7 +2107,7 @@ export function createGameScreen(el, ctx) {
   }
 
   // ---------- 打球 → 守備ビュー ----------
-  function startInPlay(prev, res) {
+  function startInPlay(prev, res, forced = null) {
     if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
     phase = 'fielding';
     state = res.state;
@@ -2075,7 +2120,7 @@ export function createGameScreen(el, ctx) {
     contactFeedback(res.event, res.ball, c.x, c.y);
     tickerText = `${batter?.name ?? ''}、${res.event?.bunt ? 'バント！' : '打った！'}`;
     render();
-    later(() => openFieldView(prev, res.ball, wasUserBatting), FIELD_OPEN_MS);
+    later(() => openFieldView(prev, res.ball, wasUserBatting, forced), FIELD_OPEN_MS);
   }
 
   function buildFielders(side) {
@@ -2088,7 +2133,7 @@ export function createGameScreen(el, ctx) {
     });
   }
 
-  function openFieldView(prev, ball, wasUserBatting) {
+  function openFieldView(prev, ball, wasUserBatting, forced = null) {
     if (destroyed || phase !== 'fielding') return;
     resetBall();
     const fSide = fieldingSide();
@@ -2107,6 +2152,7 @@ export function createGameScreen(el, ctx) {
         state, ball, side: fSide, userControlled: userFielding,
         fielders: buildFielders(fSide),
         mode: userFielding ? fieldMode() : 'cpu',          // 'assist' | 'manual' | 'cpu'
+        forced: userFielding ? null : forced,              // CPU 守備はエンジンの守備結果どおりに見せる
         timeScale: userFielding ? 1 : CPU_FIELD_SPEED,     // CPU 守備ビューは早送り
         tapToSkip: !userFielding,
         runners: engine.summary(state).runners,

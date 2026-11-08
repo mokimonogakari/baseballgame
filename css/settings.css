@@ -15,3 +15,7 @@
 /* ボタンの高さは全項目で揃える（title.css の値に合わせ、詳細度で上書き） */
 .settings .settings-body .seg-btn,.settings .settings-body .seg-vol .seg-btn,.settings .settings-body .seg-5 .seg-btn{height:72px}
 body.compact .settings .settings-body .seg-btn,body.compact .settings .settings-body .seg-vol .seg-btn,body.compact .settings .settings-body .seg-5 .seg-btn{height:90px}
+/* 試合・操作タブは 7 項目（4 段）: 1280×720 に収まるよう詰める（compact はスクロール） */
+body:not(.compact) .settings .settings-body.set-play{gap:14px 44px;padding-top:18px}
+body:not(.compact) .settings .settings-body.set-play .seg-btn{height:60px}
+body:not(.compact) .settings .settings-body.set-play .set-group h3{margin-bottom:4px}

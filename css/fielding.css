@@ -197,3 +197,39 @@ body.touch .fv-user[data-phase="secured"] .fv-callout{top:40px;font-size:30px;pa
 .fv-skip-user small{font-size:12px;padding:1px 6px;border-radius:6px;background:#1C2B4B;color:#FFD54A}
 body.touch .fv .fv-skip-user{display:inline-flex!important;height:52px;font-size:19px}
 body.touch .fv .fv-skip-user small{display:none}
+
+/* ---- 際どい判定（P1-4）: スロー再生の縁取りと塁審 ---- */
+.fv-slowfx{inset:0;pointer-events:none;z-index:1450;opacity:0;transition:opacity .15s;
+  box-shadow:inset 0 0 0 5px rgba(255,255,255,.35),inset 0 0 120px rgba(10,18,36,.55)}
+.fv-slowfx b{position:absolute;left:50%;top:132px;transform:translateX(-50%);padding:1px 12px;border-radius:9px;background:rgba(28,43,75,.85);border:2px solid #fff;color:#fff;font-size:15px;font-weight:900;letter-spacing:.2em}
+.fv-slow .fv-slowfx{opacity:1}
+.fv-ump{--team:#1C2B4B;display:none}
+.fv-ump.show{display:block}
+.fv-ump .fv-tok-cap{background:#1C2B4B;border-color:#0B1222}
+.fv-ump .fv-tok-body{background:#2B3346;border-color:#0B1222;box-shadow:inset 0 3px 0 #9AA8C4}
+.fv-ump .fv-tok-legs>i{background:#5D6B86}
+.fv-ump .fv-tok-ring{background:rgba(0,0,0,.28)}
+/* 腕（肩から下がる。ポーズで回す） */
+.fv-ump-arm{position:absolute;top:22px;width:5px;height:12px;background:#2B3346;border:1.5px solid #0B1222;border-radius:3px;box-sizing:border-box;transform-origin:50% 2px;transition:transform .12s ease-out;z-index:1}
+.fv-ump-arm::after{content:"";position:absolute;left:50%;bottom:-5px;width:6px;height:6px;margin-left:-3px;background:#FFE8D1;border:1.5px solid #1C2B4B;border-radius:50%;box-sizing:border-box}
+.fv-ump-arm.l{left:6px;transform:rotate(12deg)}
+.fv-ump-arm.r{right:6px;transform:rotate(-12deg)}
+/* 判定を待つ: 腰を落として手を膝へ */
+.fv-ump-watch .fv-tok-fig{transform:scaleX(var(--face,1)) translateY(3px) scaleY(.9)}
+.fv-ump-watch .fv-ump-arm.l{transform:rotate(28deg)}
+.fv-ump-watch .fv-ump-arm.r{transform:rotate(-28deg)}
+/* アウト: 右の拳を高く上げる */
+.fv-ump-out .fv-ump-arm.r{transform:rotate(-165deg);z-index:3}
+.fv-ump-out .fv-ump-arm.r::after{width:8px;height:8px;margin-left:-4px;bottom:-6px;border-radius:3px}
+.fv-ump-out .fv-tok-fig{animation:fv-ump-out .35s ease-out both}
+@keyframes fv-ump-out{0%{transform:scaleX(var(--face,1)) translateY(2px)}50%{transform:scaleX(var(--face,1)) translateY(-3px)}100%{transform:scaleX(var(--face,1)) translateY(0)}}
+/* セーフ: 両腕を横へ大きく広げる */
+.fv-ump-safe .fv-ump-arm.l{transform:rotate(92deg)}
+.fv-ump-safe .fv-ump-arm.r{transform:rotate(-92deg)}
+.fv-ump-safe .fv-ump-arm{z-index:3}
+.fv-ump-safe .fv-tok-fig{transform:scaleX(var(--face,1)) translateY(2px) scaleY(.94)}
+/* 判定の瞬間、塁審の足元に輪 */
+.fv-ump-out .fv-tok-ring,.fv-ump-safe .fv-tok-ring{background:rgba(255,213,74,.4);border:2px solid #FFD54A;box-sizing:border-box}
+.fv-rm .fv-slowfx{display:none}
+/* 観戦ビュー（ユーザーの打球）はタッチ端末でもスキップの案内を出す（画面のどこをタップしてもスキップ） */
+body.touch .fv.fv-cpu .fv-skip{display:inline-flex!important;align-items:center;height:52px;font-size:19px;opacity:.92}

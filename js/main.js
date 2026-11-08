@@ -39,7 +39,7 @@ function fitStage() {
 }
 
 const SETTINGS_KEY = 'dokidoki.settings';
-const DEFAULTS = { innings: 3, difficulty: 'normal', sound: true, music: true, musicVolume: 0.7, cursorSpeed: 3, pitchMode: 'manual', fieldMode: 'assist', battingAssist: null };
+const DEFAULTS = { innings: 3, difficulty: 'normal', sound: true, music: true, musicVolume: 0.7, cursorSpeed: 3, pitchMode: 'manual', fieldMode: 'assist', watchPlays: 'all', battingAssist: null };
 function loadSettings() {
   const out = { ...DEFAULTS };
   try {
@@ -52,6 +52,7 @@ function loadSettings() {
     if (Number.isInteger(o.cursorSpeed) && o.cursorSpeed >= 1 && o.cursorSpeed <= 5) out.cursorSpeed = o.cursorSpeed;
     if (['manual', 'cpu'].includes(o.pitchMode)) out.pitchMode = o.pitchMode;
     if (['manual', 'assist', 'auto'].includes(o.fieldMode)) out.fieldMode = o.fieldMode;
+    if (['all', 'big', 'off'].includes(o.watchPlays)) out.watchPlays = o.watchPlays;
     if (o.battingAssist === null || [0, 1, 2, 3].includes(o.battingAssist)) out.battingAssist = o.battingAssist ?? null;
   } catch (e) { /* ignore */ }
   return out;
@@ -64,6 +65,7 @@ function saveSettings(patch) {
   if ('cursorSpeed' in p && !(Number.isInteger(p.cursorSpeed) && p.cursorSpeed >= 1 && p.cursorSpeed <= 5)) delete p.cursorSpeed;
   if ('pitchMode' in p && !['manual', 'cpu'].includes(p.pitchMode)) delete p.pitchMode;
   if ('fieldMode' in p && !['manual', 'assist', 'auto'].includes(p.fieldMode)) delete p.fieldMode;
+  if ('watchPlays' in p && !['all', 'big', 'off'].includes(p.watchPlays)) delete p.watchPlays;
   if ('battingAssist' in p && !(p.battingAssist === null || [0, 1, 2, 3].includes(p.battingAssist))) delete p.battingAssist;
   Object.assign(settings, p);
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }

@@ -24,6 +24,9 @@
  *   result = { caughtInAir, fielderId, fieldedAt:{x,y}, fieldTime, throwTo:1|2|3|4|null, throwTime, error,
  *              diving, throwStartAt, throwArriveAt }
  *   ホームランの場合は飛球を再生して onDone(null)。
+ *   際どい判定（走者の到達と送球の到達の差 < CLOSE_S 秒）は、その瞬間をスロー（CLOSE_SLOW 倍）にして
+ *   塁審のジェスチャー（アウト = 拳を上げる / セーフ = 両腕を広げる）を出す。見た目のみで判定・タイミングは変えない。
+ *   prefers-reduced-motion ではスローにしない。
  *
  * 座標: メートル。本塁(0,0)、+y=センター方向、+x=一塁/ライト側、z=高さ。
  */
@@ -35,6 +38,14 @@ const BASE_LEN = 27.43;        // 塁間（走者の走行距離計算用）
 const AUTO_THROW_S = 1.2;      // 送球入力待ち
 const CPU_HOLD_S = 0.35;       // CPU の送球までの間
 const MAX_SIM_S = 25;
+// 際どい判定の演出（見た目のみ）
+const CLOSE_S = 0.15;          // 走者の到達と送球の到達の差がこれ未満なら「際どい」
+const CLOSE_SLOW = 0.35;       // その瞬間の再生速度
+const CLOSE_PRE = 0.4;         // 到達のこの秒数前からスロー
+const CLOSE_POST = 0.3;        // 到達のこの秒数後までスロー
+const CLOSE_CALL_DELAY = 0.1;  // ジェスチャーの後にコールの文字（シミュレーション秒）
+/** 塁審の立ち位置（塁からのずれ、m）。1・3塁はファウルゾーン、2塁は外野寄り、本塁は三塁側の後ろ */
+const UMP_OFFSET = { 1: { x: 3.2, y: 1.4 }, 2: { x: 3.4, y: 3.4 }, 3: { x: -3.2, y: 1.4 }, 4: { x: -2.4, y: -2.2 } };
 
 const DEFAULT_FIELD = {
   home: { x: 0, y: 0 },
@@ -130,8 +141,11 @@ export function createFieldingView(container, opts = {}) {
   const judge = typeof opts.previewPlay === 'function' ? opts.previewPlay : null;
   const engThrowTime = typeof opts.throwTime === 'function' ? opts.throwTime : null;
   const engSuggest = typeof opts.suggestThrow === 'function' ? opts.suggestThrow : null;
+  // CPU 守備ビュー: エンジンの CPU 守備（autoField）の結果どおりに見せる（打席結果と一致させる）
+  const forced = !userControlled && opts.forced && opts.forced.fielderId ? opts.forced : null;
   let autoAll = false;       // スキップ: 残りを CPU 守備で一気に処理
   let verdict = null;        // 送球後の判定（previewPlay の結果）
+  const closes = [];         // 際どい判定の瞬間 [{ base, at, out }]（見た目のみ）
   const timers = [];         // シミュレーション時間のタイマー
   const later = (fn, sec) => timers.push({ at: t + sec, fn });
   const safeCall = (fn, ...a) => { try { return fn(...a); } catch (e) { console.warn(e); return null; } };
@@ -374,6 +388,34 @@ export function createFieldingView(container, opts = {}) {
     bases: [...root.querySelectorAll('.fv-basemark')], trail: [...root.querySelectorAll('.fv-trail')], zLabel: q('[data-ref="z-label"]'), xLabel: q('[data-ref="x-label"]'),
   };
   fielders.forEach((f) => { f.el = tokenEl(f.color, f.pos, false); dom.layer.appendChild(f.el); });
+  // 塁審（際どい判定のときだけ現れる。本作の絵柄の 2 頭身）
+  const ump = { el: null, base: 0, call: '' };
+  function umpEl() {
+    if (ump.el) return ump.el;
+    const el = document.createElement('div');
+    el.className = 'fv-tok fv-ump';
+    el.setAttribute('aria-hidden', 'true');
+    el.innerHTML = '<i class="fv-tok-ring"></i><div class="fv-tok-fig"><i class="fv-ump-arm l"></i><i class="fv-ump-arm r"></i><div class="fv-tok-head"><i class="fv-tok-cap"></i><i class="fv-tok-eye l"></i><i class="fv-tok-eye r"></i></div><div class="fv-tok-body"></div><div class="fv-tok-legs"><i></i><i></i></div></div>';
+    dom.layer.appendChild(el);
+    ump.el = el;
+    return el;
+  }
+  /** 塁審をその塁のそばに立たせる（判定前は構えて見ている） */
+  function umpWatch(base) {
+    const el = umpEl();
+    ump.base = base; ump.call = '';
+    el.classList.remove('fv-ump-out', 'fv-ump-safe');
+    el.classList.add('show', 'fv-ump-watch');
+  }
+  /** 判定のジェスチャー: out = 拳を上げる、safe = 両腕を横に広げる */
+  function umpCall(base, out) {
+    const el = umpEl();
+    if (ump.base !== base) umpWatch(base);
+    ump.call = out ? 'out' : 'safe';
+    el.classList.remove('fv-ump-watch', 'fv-ump-out', 'fv-ump-safe');
+    void el.offsetWidth;
+    el.classList.add('show', out ? 'fv-ump-out' : 'fv-ump-safe');
+  }
   runners.forEach((r) => { r.el = tokenEl(opts.runnerColor || '#E5484D', r.isBatter ? '打' : '走', true); dom.layer.appendChild(r.el); });
 
   function tokenEl(color, label, runner) {
@@ -455,6 +497,7 @@ export function createFieldingView(container, opts = {}) {
   ${ppole(1)}${ppole(-1)}
 </svg>
 ${baseMarks}
+<div class="fv-slowfx" aria-hidden="true"><b>スロー</b></div>
 <div class="fv-layer"><div class="fv-landmark"></div><div class="fv-shadow"></div><i class="fv-trail"></i><i class="fv-trail"></i><i class="fv-trail"></i><div class="fv-ball"></div></div>
 <div class="fv-hud"><span class="fv-chip">${userControlled && !isHR ? (assistMode ? 'おまかせ守備' : '守備') : '打球'}</span><span class="fv-type">${esc(typeLabel)}</span><span class="fv-who" data-ref="who"></span></div>
 <div class="fv-callout" role="status" aria-live="polite"></div>
@@ -470,7 +513,7 @@ ${userControlled && !isHR ? `
   <button type="button" class="fv-btn-x" data-key="x" aria-label="X"><b>X</b><small data-ref="x-label">切替</small></button>
   <button type="button" class="fv-btn-z" data-key="z" aria-label="Z"><b>Z</b><small data-ref="z-label">キャッチ</small></button>
 </div>
-<button type="button" class="fv-skip fv-skip-user" data-key="skip" aria-label="守備をスキップ（S）">スキップ ▶▶<small>S</small></button>` : `<button type="button" class="fv-skip" data-key="enter">${opts.tapToSkip ? 'タップ / Enter:スキップ ▶▶' : 'Enter:スキップ ▶▶'}</button>`}`;
+<button type="button" class="fv-skip fv-skip-user" data-key="skip" aria-label="守備をスキップ（S）">スキップ ▶▶<small>S</small></button>` : `<button type="button" class="fv-skip" data-key="enter" aria-label="スキップ（S / Enter）">${opts.tapToSkip ? (coarse ? 'タップでスキップ ▶▶' : 'タップ / S:スキップ ▶▶') : 'S / Enter:スキップ ▶▶'}</button>`}`;
   }
 
   function bindTouch() {
@@ -738,6 +781,19 @@ ${userControlled && !isHR ? `
       dom.prompt.style.setProperty('--auto', String(clamp(1 - (t - securedAt) / wait, 0, 1).toFixed(3)));
     }
     if (dom.who) dom.who.textContent = user && userControlled ? `${user.pos} ${user.name}` : '';
+    // 塁審（塁のそばに立ち、塁の方を向く）
+    if (ump.el && ump.base) {
+      const B = BASES[ump.base], o = UMP_OFFSET[ump.base];
+      const p = placeTok(ump.el, B.x + o.x, B.y + o.y, 1.2);
+      ump.el.style.setProperty('--face', String(project(B.x, B.y).X < p.X ? -1 : 1));
+    }
+    root.classList.toggle('fv-slow', closeSlowNow());
+  }
+
+  /** 際どい判定の瞬間か（スロー再生の区間。prefers-reduced-motion では常に false） */
+  function closeSlowNow() {
+    if (reduceMotion || phase === 'done') return false;
+    return closes.some((c) => t >= c.at - CLOSE_PRE && t <= c.at + CLOSE_POST);
   }
 
   function throwPos(at = t) {
@@ -812,11 +868,11 @@ ${userControlled && !isHR ? `
     const air = inAirAt(t);
     const routine = !diving && !retrieved;
     const errP = routine ? 0.04 - (f.catching / 99) * 0.03 : 0;
-    const error = Math.random() < errP;
-    const caughtInAir = air && !error;
+    const error = forced ? !!forced.error : Math.random() < errP;
+    const caughtInAir = forced ? !!forced.caughtInAir && !error : air && !error;
     result = {
       caughtInAir, fielderId: f.id, fieldedAt: { x: round2(f.x), y: round2(f.y) },
-      fieldTime: round2(t + (error ? 0.7 : 0)), throwTo: null, throwTime: null, error, diving,
+      fieldTime: forced ? Number(forced.fieldTime) : round2(t + (error ? 0.7 : 0)), throwTo: null, throwTime: null, error, diving,
       throwStartAt: null, throwArriveAt: null,
     };
     f.moving = false;
@@ -928,7 +984,7 @@ ${userControlled && !isHR ? `
     throwInfo = { from, to, base, start: t, dur };
     result.throwTime = round2(dur);
     result.throwStartAt = round2(t);
-    result.throwArriveAt = round2(t + dur);
+    result.throwArriveAt = round2((forced ? Number(forced.fieldTime) : t) + dur);
     verdict = judge ? safeCall(judge, fieldingNow()) : null;
     if (verdict) syncRunners(verdict);
     // 見た目用: 投げる動作、際どいタイミングの走者はスライディング
@@ -938,9 +994,45 @@ ${userControlled && !isHR ? `
       const arr = r.arrAt ?? r.next?.arrAt;
       if (arr != null && Math.abs(arr - result.throwArriveAt) < 0.45) r.slide = true;
     }
+    findCloses(base);
     phase = 'throw';
     play('swing');
     setPrompt();
+  }
+
+  /**
+   * 際どい判定を探す（見た目のみ）: 送球先の塁で、走者の到達と送球の到達（判定と同じ verdict.arrive）の差が CLOSE_S 未満。
+   * 併殺の一塁転送（verdict.relay）も同じ。判定そのもの（out）は verdict のまま
+   */
+  function findCloses(base) {
+    closes.length = 0;
+    if (!verdict?.runners) return;
+    const arrive = Number.isFinite(verdict.arrive) ? verdict.arrive : result?.throwArriveAt;
+    const caughtBatter = (pr) => verdict.caught && pr.isBatter;
+    const cands = verdict.runners.filter((pr) => pr.target === base && pr.target > pr.from && !caughtBatter(pr));
+    const pr = cands.find((x) => x.out) || cands[0];
+    const ra = pr ? Number(pr.arr?.[base]) : NaN;
+    if (pr && Number.isFinite(ra) && Number.isFinite(arrive) && Math.abs(ra - arrive) < CLOSE_S) {
+      closes.push({ base, at: arrive, out: !!pr.out });
+      umpWatch(base);
+    }
+    if (verdict.relay && Number.isFinite(verdict.relay.arrive)) {
+      const br = verdict.runners.find((x) => x.isBatter);
+      const ba = br ? Number(br.arr?.[1]) : NaN;
+      if (Number.isFinite(ba) && Math.abs(ba - verdict.relay.arrive) < CLOSE_S) {
+        closes.push({ base: 1, at: verdict.relay.arrive, out: !!verdict.relay.out });
+        if (closes.length === 1) umpWatch(1);
+      }
+    }
+  }
+
+  /** 判定のコール。際どい判定なら塁審のジェスチャーの後に文字を出す */
+  function judgeCall(base, text, cls, out) {
+    const c = closes.find((x) => x.base === base && !x.called);
+    if (!c) { callout(text, cls); return; }
+    c.called = true;
+    umpCall(base, out);
+    later(() => callout(text, cls), CLOSE_CALL_DELAY);
   }
 
   function finishSoon(delay) {
@@ -1007,7 +1099,14 @@ ${userControlled && !isHR ? `
     if (phase === 'live') {
       const b = ballAt(t);
       // 自動捕球
-      if (t > 0.25) {
+      if (forced) {
+        const f = fielders.find((g) => g.id === forced.fielderId);
+        if (f && t >= forced.fieldTime) {
+          f.x = forced.fieldedAt?.x ?? b.x; f.y = forced.fieldedAt?.y ?? b.y; // 捕球位置へ（追いついている前提の微調整）
+          secure(f, { retrieved: !forced.caughtInAir && t > PEND });
+          return;
+        }
+      } else if (t > 0.25) {
         let best = null;
         for (const f of fielders) {
           if (t < f.downUntil) continue;
@@ -1026,15 +1125,15 @@ ${userControlled && !isHR ? `
         cands.sort((a, c) => Math.hypot(b.x - a.x, b.y - a.y) - Math.hypot(b.x - c.x, b.y - c.y));
         cands.slice(0, 2).forEach((f) => { f.role = 'retrieve'; });
       }
-      if (t > MAX_SIM_S) {
+      if (t > MAX_SIM_S && !forced) {
         const n = fielders.slice().sort((a, c) => Math.hypot(b.x - a.x, b.y - a.y) - Math.hypot(b.x - c.x, b.y - c.y))[0];
         if (n) { n.x = b.x; n.y = b.y; secure(n, { retrieved: true }); }
       }
     } else if (phase === 'bobble') {
       if (t >= bobbleUntil) enterSecured();
     } else if (phase === 'secured') {
-      const wait = !userControlled || autoAll ? CPU_HOLD_S : assistMode ? AUTO_THROW_REAL_S * SLOW_SECURED : AUTO_THROW_S;
-      if (t - securedAt >= wait) doThrow(userControlled ? (autoAll ? selBase ?? smartBase() : selBase) : smartBase());
+      const wait = forced ? 0 : !userControlled || autoAll ? CPU_HOLD_S : assistMode ? AUTO_THROW_REAL_S * SLOW_SECURED : AUTO_THROW_S;
+      if (t - securedAt >= wait) doThrow(forced ? forced.throwTo ?? null : userControlled ? (autoAll ? selBase ?? smartBase() : selBase) : smartBase());
     } else if (phase === 'throw') {
       if (t >= throwInfo.start + throwInfo.dur) {
         const recv = fielders.filter((f) => f !== holder).sort((a, c) => dist(a, throwInfo.to) - dist(c, throwInfo.to))[0];
@@ -1049,16 +1148,16 @@ ${userControlled && !isHR ? `
           const victim = verdict.runners.find((pr) => pr.out && pr.target === base && !caughtBatter(pr));
           const contested = verdict.runners.some((pr) => pr.target === base && pr.target > pr.from && !caughtBatter(pr));
           if (victim) {
-            callout('アウト！', 'good');
+            judgeCall(base, 'アウト！', 'good', true);
             const r = runners.find((x) => (victim.isBatter ? x.isBatter : !x.isBatter && x.origin === victim.from));
             if (r) later(() => { r.gone = true; }, 0.35);
-          } else if (contested) callout('セーフ！', 'bad');
+          } else if (contested) judgeCall(base, 'セーフ！', 'bad', false);
           if (verdict.relay) {
             wait = Math.max(wait, verdict.relay.arrive - t + 0.6);
             if (verdict.relay.out) {
               const br = runners.find((x) => x.isBatter);
-              later(() => { callout('ゲッツー！', 'good'); if (br) br.gone = true; }, Math.max(0, verdict.relay.arrive - t));
-            } else later(() => callout('一塁セーフ！', 'bad'), Math.max(0, verdict.relay.arrive - t));
+              later(() => { judgeCall(1, 'ゲッツー！', 'good', true); if (br) br.gone = true; }, Math.max(0, verdict.relay.arrive - t));
+            } else later(() => judgeCall(1, '一塁セーフ！', 'bad', false), Math.max(0, verdict.relay.arrive - t));
           }
         }
         finishSoon(wait);
@@ -1083,7 +1182,8 @@ ${userControlled && !isHR ? `
     const dtReal = lastNow ? Math.min(0.05, (nowMs - lastNow) / 1000) : 0;
     lastNow = nowMs;
     // Slow the entire play equally so runners and throw physics remain fair.
-    let acc = dtReal * timeScale * (slowSecured && phase === 'secured' ? SLOW_SECURED : 1);
+    // 際どい判定の瞬間はさらにスロー（見た目のみ。シミュレーションの刻みは同じなので判定は変わらない）
+    let acc = dtReal * timeScale * (slowSecured && phase === 'secured' ? SLOW_SECURED : 1) * (closeSlowNow() ? CLOSE_SLOW : 1);
     while (acc > 1e-6 && phase !== 'done') {
       const d = Math.min(DT, acc);
       step(d);
@@ -1182,6 +1282,12 @@ ${userControlled && !isHR ? `
 
   // ---------- 初期化 ----------
   assignRoles();
+  if (forced) {
+    for (const f of fielders) {
+      if (f.id === forced.fielderId) f.role = 'chase';
+      else if (f.role === 'chase') f.role = 'backup';
+    }
+  }
   if (userControlled && !isHR) {
     const first = switchOrder[0];
     setUser(first);
@@ -1203,7 +1309,8 @@ ${userControlled && !isHR ? `
     debug() {
       const b = ballAt(t);
       return { t, phase, type, ball: b, landing, user: user && { x: user.x, y: user.y, pos: user.pos, R: user.R },
-        aim: user ? intercept(user, t, 0) : null, holder: holder && holder.pos, selBase, result };
+        aim: user ? intercept(user, t, 0) : null, holder: holder && holder.pos, selBase, result,
+        closes: closes.map((c) => ({ ...c })), slow: closeSlowNow(), ump: ump.call };
     },
     destroy() {
       destroyed = true;
