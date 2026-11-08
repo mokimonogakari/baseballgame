@@ -28,6 +28,7 @@ import * as data from './data.js';
 import { createFieldingView } from './fielding.js';
 import { openSubsMenu } from './subs.js';
 import { createCommentary } from './commentary.js';
+import { stadiumSVG } from './stadium.js';
 
 // ---- 試合形式（設定 pitchMode / fieldMode / battingAssist で切り替え。createGameScreen 内の manualPitching() など） ----
 /**
@@ -717,7 +718,7 @@ export function createGameScreen(el, ctx) {
     const pitcher = engine.getPitcher(state);
     return `
 <div class="game">
-  <div class="game-field"><div class="gf-sky"></div><div class="gf-stand"></div><div class="gf-vision"><b>DOKIDOKI</b><span>STADIUM</span></div><div class="gf-fence"><span>ドキドキ食堂</span><span>ベースボールソーダ</span><span>ナイスバッティング</span></div><div class="gf-grass"></div><div class="gf-infield"></div><div class="gf-mound"></div><div class="gf-dirt"></div><div class="gf-lines"></div><div class="gf-plate"></div></div>
+  <div class="game-field">${stadiumSVG()}</div>
   <header class="game-header">
     <div class="hteam away"><span class="team-badge" style="background:${esc(away.color)}">${esc(away.short)}</span><span class="team-name">${esc(away.name)}</span><span class="score-num" data-score="away">0</span></div>
     <div class="inning" data-ref="inning"></div>

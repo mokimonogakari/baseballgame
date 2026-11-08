@@ -1,4 +1,5 @@
 import { chibiHTML } from './screens.js';
+import { stadiumSVG } from './stadium.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SEEN_KEY = 'dokidoki.guideSeen';
@@ -86,7 +87,7 @@ export function renderTitle(el, ctx) {
   const { user, opp } = ctx.matchup();
   const chip = (t) => `<span class="mchip" style="--c:${esc(t.color)}">${esc(t.short)}</span>`;
   const chips = modeChips(ctx.settings).map(([a, b]) => `<span class="rule-chip">${b ? `${esc(a)}<b>${esc(b)}</b>` : `<b>${esc(a)}</b>`}</span>`).join('');
-  el.innerHTML = `<div class="title" style="position:absolute;inset:0">
+  el.innerHTML = `<div class="title" style="position:absolute;inset:0">${stadiumSVG()}
     <div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div>
     <div class="stand"></div><div class="stand-line"></div>
     <div class="grass"></div><div class="grass-stripe s1"></div><div class="grass-stripe s2"></div>

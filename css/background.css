@@ -82,3 +82,98 @@ body{
 .gf-dirt{left:-120px;top:546px;width:1520px;height:420px;border-radius:50%;background:radial-gradient(ellipse at 50% 20%,#D4A26C 0%,#C9955F 45%,#BD8853 100%)}
 .gf-lines{inset:0;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1280' height='720' viewBox='0 0 1280 720'%3E%3Cg stroke='%23fff' stroke-width='5' stroke-linecap='round' opacity='.92'%3E%3Cpath d='M598 666L-40 524'/%3E%3Cpath d='M682 666L1320 524'/%3E%3C/g%3E%3C/svg%3E") no-repeat 0 0/1280px 720px}
 .gf-plate{left:600px;top:640px;width:80px;height:40px;background:#fff;clip-path:polygon(0 0,100% 0,100% 55%,50% 100%,0 55%)}
+
+/* =========================================================
+   スタジアム（js/stadium.js のインライン SVG）: バックネット裏の中継カメラ視点
+   色はここで決める。昼が既定、.game.is-night / .stadium.is-night で夜。
+   ========================================================= */
+.stadium{position:absolute;left:0;top:0;width:1280px;height:720px;display:block;pointer-events:none}
+.game-field>.stadium{z-index:0}
+/* 旧来の平面背景（SVG が入っていれば隠す） */
+.title .stadium~.cloud,.title .stadium~.stand,.title .stadium~.stand-line,.title .stadium~.grass,.title .stadium~.grass-stripe,.title .stadium~.dirt{display:none}
+.title:has(.stadium)::before{display:none}
+
+/* 空 */
+.stadium .sk1{stop-color:#2F7FDB}.stadium .sk2{stop-color:#8FC6F5}.stadium .sk3{stop-color:#CFE8FA}
+.stadium .st-clouds{fill:#fff;opacity:.75}
+/* スタンド */
+.stadium .st-roof{fill:#3A4659}
+.stadium .st-seat{fill:#33486B}
+.stadium .st-crowd{opacity:.95}
+.stadium .cw1{fill:#F2F2F0}.stadium .cw2{fill:#D9474B}.stadium .cw3{fill:#2F6FD0}
+.stadium .cw4{fill:#F5C542}.stadium .cw5{fill:#1E2433}.stadium .cw6{fill:#E9A37E}
+.stadium .ti1{stop-color:#0B1426;stop-opacity:.42}.stadium .ti2{stop-color:#0B1426;stop-opacity:0}
+.stadium .st-conc{fill:#202B40}
+.stadium .st-aisle{fill:none;stroke:#1A2337;stroke-width:1.6;opacity:.55}
+.stadium .st-rail{fill:none;stroke:#C9D3E3;stroke-width:1.4;opacity:.8}
+.stadium .st-backscreen{fill:#1D3B2E}
+/* 大型ビジョン */
+.stadium .st-frame{fill:#1A2030;stroke:#5A6A86;stroke-width:2}
+.stadium .st-pillar{fill:#2A3346}
+.stadium .sc1{stop-color:#2456A8}.stadium .sc2{stop-color:#13305F}
+.stadium .st-scr-t{fill:#FFD54A;font:900 19px/1 var(--font,sans-serif);letter-spacing:1.5px}
+.stadium .st-scr-s{fill:#fff;font:800 9px/1 var(--font,sans-serif);letter-spacing:4px}
+.stadium .st-lscore{fill:#0C111C}
+.stadium .st-ls{fill:#FFE9A8;font:700 9.6px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.6px}
+.stadium .st-ls.dim{fill:#8FB3E8}
+.stadium .st-ad.a1{fill:#fff}.stadium .st-ad.a2{fill:#FFD54A}
+.stadium .st-adt{fill:#D9363E;font:900 9px/1 var(--font,sans-serif)}.stadium .st-adt.dark{fill:#1C2B4B;font-size:8px}
+/* 照明塔 */
+.stadium .st-pole{fill:#5E6B80}
+.stadium .st-bankbg{fill:#2B3448}
+.stadium .bulb{fill:#E8EEF6}
+.stadium .st-night-only{display:none}
+/* フィールド */
+.stadium .gr1{stop-color:#6FAE5E}.stadium .gr2{stop-color:#4E9E45}.stadium .gr3{stop-color:#3D8A3A}
+.stadium .st-mow{fill:#fff;opacity:.07}
+.stadium .st-band{fill:#0A3D12;opacity:.07}
+.stadium .st-edge{fill:none;stroke:#2F6E2C;stroke-width:1.2;opacity:.5}
+.stadium .dt1{stop-color:#C99A68}.stadium .dt2{stop-color:#B07B4B}
+.stadium .st-track{fill:#A9805A}
+.stadium .st-wall{fill:#1F5A40}
+.stadium .st-wtop{fill:none;stroke:#F6C944;stroke-width:2.2;stroke-linejoin:round}
+.stadium .st-dist text{fill:#fff;font-family:var(--font,sans-serif);font-weight:900}
+.stadium .st-chalk{stroke:#fff;stroke-width:2.6;stroke-linecap:round;opacity:.92}
+.stadium .st-box{fill:none;stroke:#fff;stroke-width:3.2;stroke-linejoin:round}
+.stadium .st-base{fill:#fff}
+.stadium .st-plate{fill:#fff;stroke:#D8CFC2;stroke-width:1.5}
+.stadium .mo1{stop-color:#D7AA77}.stadium .mo2{stop-color:#C49260}.stadium .mo3{stop-color:#AE7C4C}
+.stadium .st-moundshadow{fill:#6E4A28;opacity:.28}
+.stadium .st-rubber{fill:#fff}
+/* 空気遠近（奥ほど白っぽく）・手前の影（バックネット裏スタンドの影） */
+.stadium .fg1{stop-color:#E8F3FF;stop-opacity:.34}.stadium .fg2{stop-color:#E8F3FF;stop-opacity:.16}.stadium .fg3{stop-color:#E8F3FF;stop-opacity:0}
+.stadium .sh1{stop-color:#0E1A10;stop-opacity:0}.stadium .sh2{stop-color:#0E1A10;stop-opacity:.24}
+
+/* ---------- 夜 ---------- */
+:is(.is-night .stadium,.stadium.is-night) .sk1{stop-color:#050A1A}
+:is(.is-night .stadium,.stadium.is-night) .sk2{stop-color:#14254A}
+:is(.is-night .stadium,.stadium.is-night) .sk3{stop-color:#2A3F6E}
+:is(.is-night .stadium,.stadium.is-night) .st-clouds{opacity:.06}
+:is(.is-night .stadium,.stadium.is-night) .st-roof{fill:#0A0E17}
+:is(.is-night .stadium,.stadium.is-night) .st-seat{fill:#111A2C}
+:is(.is-night .stadium,.stadium.is-night) .st-crowd{opacity:.6}
+:is(.is-night .stadium,.stadium.is-night) .st-conc{fill:#121A2A}
+:is(.is-night .stadium,.stadium.is-night) .st-backscreen{fill:#0F241B}
+:is(.is-night .stadium,.stadium.is-night) .bulb{fill:#FFFBE6}
+:is(.is-night .stadium,.stadium.is-night) .st-bankbg{fill:#FFF3C4}
+:is(.is-night .stadium,.stadium.is-night) .st-night-only{display:inline}
+:is(.is-night .stadium,.stadium.is-night) .gl1{stop-color:#FFF7D6;stop-opacity:1}
+:is(.is-night .stadium,.stadium.is-night) .gl2{stop-color:#FFF2C0;stop-opacity:.4}
+:is(.is-night .stadium,.stadium.is-night) .gl3{stop-color:#FFF2C0;stop-opacity:0}
+:is(.is-night .stadium,.stadium.is-night) .gr1{stop-color:#4C9A50}
+:is(.is-night .stadium,.stadium.is-night) .gr2{stop-color:#3F9646}
+:is(.is-night .stadium,.stadium.is-night) .gr3{stop-color:#2F7A36}
+:is(.is-night .stadium,.stadium.is-night) .st-mow{opacity:.09}
+:is(.is-night .stadium,.stadium.is-night) .dt1{stop-color:#B98A5C}
+:is(.is-night .stadium,.stadium.is-night) .dt2{stop-color:#9C6C42}
+:is(.is-night .stadium,.stadium.is-night) .st-track{fill:#8E6A49}
+:is(.is-night .stadium,.stadium.is-night) .st-wall{fill:#143D2C}
+:is(.is-night .stadium,.stadium.is-night) .fg1{stop-color:#060B18;stop-opacity:.38}
+:is(.is-night .stadium,.stadium.is-night) .fg2{stop-color:#060B18;stop-opacity:.12}
+:is(.is-night .stadium,.stadium.is-night) .sh2{stop-color:#050A14;stop-opacity:.3}
+.stadium .st-fpole{stroke:#F6C944;stroke-width:3;stroke-linecap:round}
+.stadium .st-fnet{fill:#F6C944;opacity:.35}
+/* タイトルではロゴと重なるのでビジョン・看板を出さない */
+.title .stadium .st-board,.title .stadium .st-ads{display:none}
+:is(.is-night .stadium,.stadium.is-night) .fg3{stop-color:#060B18}
+:is(.is-night .stadium,.stadium.is-night) .st-rail{stroke:#7F8DA6}
