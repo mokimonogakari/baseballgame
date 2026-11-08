@@ -1,0 +1,317 @@
+/* =========================================================
+   縦向き（スマホ・タブレットを縦に持ったとき）  body.portrait
+   main.js の fitStage が付ける（タッチ端末で縦長の画面）。
+   - 試合画面: 1280×720 のステージから中央（ゾーン・投手・打者・捕手、守備ビューはダイヤモンド全体）を
+     切り出して横幅いっぱいに表示（transform + clip-path は fitStage）。上に情報バー #p-hud（js/portrait.js）、
+     下にタッチ操作 #touch-ui。--pt-top / --pt-ctl = フィールドの上端 / 下端（画面上の CSS px）。
+   - メニュー画面: ステージを幅 480 × 縦長にして（縮小率 0.75〜0.86）、縦 1 列のレイアウトに組み直す。
+     文字は ステージ上 15px 以上（= 11 CSS px 以上）、ボタンは 60px 以上（= 44 CSS px 以上）。
+   ========================================================= */
+body.portrait #stage-wrap{align-items:flex-start;justify-content:flex-start}
+body.portrait #stage{transform-origin:0 0}
+
+/* ---------------------------------------------------------
+   試合画面: 情報バー（スコア・カウント・走者・投手・打者）
+   --------------------------------------------------------- */
+#p-hud{display:none}
+body.portrait[data-screen="game"] #p-hud{display:block;position:fixed;left:0;right:0;top:0;z-index:45;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) 0 env(safe-area-inset-left,0px);
+  background:#1C2B4B;border-bottom:3px solid #FFD54A;color:#fff;font-family:var(--font);font-weight:800;-webkit-user-select:none;user-select:none;pointer-events:none}
+.ph-score{display:flex;align-items:center;justify-content:space-between;gap:6px;height:44px;padding:0 10px}
+.ph-team{display:flex;align-items:center;gap:5px}
+.ph-badge{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;border:2px solid #fff;font-style:normal;font-size:15px;font-weight:900;color:#fff}
+.ph-num{min-width:20px;text-align:center;font-size:26px;font-weight:900;color:#FFD54A;line-height:1}
+.ph-inning{font-size:16px;font-weight:900;white-space:nowrap}
+.ph-count{display:flex;flex-direction:column;gap:1px;padding:2px 6px;background:#0E1830;border-radius:8px}
+.ph-c{display:flex;align-items:center;gap:3px;height:12px}
+.ph-c em{width:10px;font-style:normal;font-size:11px;font-weight:900;line-height:1}
+.ph-c i{width:10px;height:10px;border-radius:50%;background:#34476E}
+.ph-b em{color:#7BD36F}.ph-s em{color:#FFD54A}.ph-o em{color:#FF6B6F}
+.ph-b i.on{background:#43C463}.ph-s i.on{background:#FFD54A}.ph-o i.on{background:#E5484D}
+.ph-runners{position:relative;width:38px;height:32px;flex:none}
+.ph-base{position:absolute;width:12px;height:12px;background:#34476E;border:2px solid #B8C4DB;transform:rotate(45deg)}
+.ph-base.on{background:#FFD54A;border-color:#fff}
+.ph-base.b2{left:13px;top:1px}.ph-base.b3{left:1px;top:14px}.ph-base.b1{left:25px;top:14px}
+.ph-row{display:flex;align-items:center;gap:6px;height:27px;padding:0 10px;border-top:1px solid rgba(184,196,219,.25);font-size:13px;white-space:nowrap;overflow:hidden}
+.ph-role{flex:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;background:#FFD54A;color:#1C2B4B;font-style:normal;font-size:12px;font-weight:900}
+.ph-bt .ph-role{background:#E5484D;color:#fff}
+.ph-name{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:15px;font-weight:900}
+.ph-order{flex:none;font-size:14px;color:#FFD54A}
+.ph-sub{flex:none;font-size:12px;color:#B8C4DB}
+.ph-velo{flex:none;margin-left:auto}
+.ph-velo b{font-size:16px;color:#FFD54A}.ph-velo small{font-size:11px;margin-left:1px;color:#B8C4DB}
+.ph-rk,.ph-ab{flex:none;display:inline-flex;align-items:center;gap:2px}
+.ph-rk small,.ph-ab small,.ph-stam small{font-size:11px;color:#B8C4DB}
+.ph-rk b,.ph-ab b{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:5px;font-size:13px;font-weight:900}
+.ph-rk:empty{display:none}
+.ph-stam{flex:none;display:inline-flex;align-items:center;gap:3px}
+.ph-bar{width:34px;height:7px;border-radius:4px;background:#34476E;overflow:hidden}
+.ph-bar i{display:block;height:100%;background:#43A047}
+.ph-bar i.mid{background:#F5A623}.ph-bar i.low{background:#E5484D}
+.ph-stam b{font-size:13px;min-width:22px}
+.ph-abil{margin-left:auto;display:flex;gap:6px}
+@media (max-width:380px){.ph-stam small,.ph-sub{display:none}.ph-abil{gap:4px}}
+
+/* 試合画面（ステージ内）: 切り出し範囲の外にある大きなパネル・ヘッダーは出さない（#p-hud が代わり） */
+body.portrait .game>.panel,body.portrait .game>.game-header{display:none}
+body.portrait .game>.overlay{left:270px;right:270px}
+body.portrait .game>.pitch-dial{top:150px}
+body.portrait .game>.pitch-info{left:auto;right:270px}
+body.portrait .game>.ticker{left:272px;width:736px}
+body.portrait .chance-banner{font-size:72px;padding:6px 24px}
+
+/* 采配メニュー: 切り出し範囲（x 260–1020）に収める */
+body.portrait .sb-panel{left:266px;top:136px;width:748px;height:578px}
+body.portrait .sb-head{flex-wrap:wrap;height:auto;padding:10px 14px;row-gap:8px}
+body.portrait .sb-head h2{font-size:30px}
+body.portrait .sb-tabs{order:3;flex:1 1 100%}
+body.portrait .sb-tab{flex:1;min-width:0;height:84px;font-size:26px;padding:0 8px}
+body.portrait .sb-close{margin-left:auto;height:84px;font-size:24px}
+body.portrait .sb-hint{font-size:22px;padding:8px 16px 2px}
+body.portrait .sb-body{padding:6px 14px 8px}
+body.portrait .sb-split{grid-template-columns:1fr}
+body.portrait .sb-grid3{grid-template-columns:1fr 1fr}
+body.portrait .sb-grid4{grid-template-columns:1fr}
+body.portrait .sb-current{flex-wrap:wrap}
+body.portrait .sb-current>b{font-size:26px}
+body.portrait .sb-current>small,body.portrait .sb-tag,body.portrait .sb-lbl,body.portrait .sb-sec,body.portrait .sb-ab small,body.portrait .sb-nm small,body.portrait .sb-stam-num,body.portrait .sb-warn{font-size:22px}
+body.portrait .sb-item{flex-wrap:wrap;row-gap:4px}
+body.portrait .sb-nm{font-size:26px}
+body.portrait .sb-ab b{width:42px;height:42px;font-size:24px}
+body.portrait .sb-ab i{font-size:22px}
+body.portrait .sb-velo b{font-size:26px}body.portrait .sb-velo small{font-size:20px}
+body.portrait .sb-stam{width:120px}
+body.portrait .sb-pos{width:46px;height:46px;font-size:24px}
+body.portrait .sb-base{height:46px;font-size:22px}
+body.portrait .sb-empty,body.portrait .sb-err{font-size:24px}
+body.portrait .sb-confirm-box{width:720px}
+body.portrait .sb-confirm-box p{font-size:28px}
+body.portrait .sb-btn{width:300px;height:92px;font-size:28px}
+
+/* 守備ビュー: 切り出し範囲（x 200–1080, y 120–700）に案内・ボタンを寄せて大きく */
+body.portrait .fv-hud{left:212px;top:130px;height:62px;gap:10px;padding:0 16px 0 10px;border-width:4px;border-radius:16px}
+body.portrait .fv-chip{font-size:26px;padding:2px 12px}
+body.portrait .fv-type{font-size:32px}
+body.portrait .fv-who{font-size:26px}
+body.portrait .fv-callout{top:206px;font-size:64px}
+body.portrait .fv-callout.hr{top:206px;font-size:76px}
+body.portrait .fv .fv-prompt{bottom:34px;height:auto;min-height:72px;max-width:860px;padding:6px 20px 6px 8px;font-size:28px;white-space:normal}
+body.portrait .fv-prompt-tag{font-size:24px}
+body.portrait .fv-prompt kbd{font-size:22px;min-width:34px;height:34px}
+body.portrait.touch .fv-assist[data-phase="secured"] .fv-prompt,body.portrait.touch .fv-user[data-phase="secured"] .fv-prompt{top:206px;bottom:auto}
+body.portrait.touch .fv-user[data-phase="secured"] .fv-callout{top:330px;font-size:44px}
+body.portrait .fv-basemark span{top:-58px;height:48px;padding:0 14px;font-size:28px;border-width:3px;border-radius:24px}
+body.portrait .fv-basemark span b{font-size:30px}
+body.portrait .fv-basemark[data-base="2"] span{bottom:72px;top:auto}
+body.portrait .fv-basemark[data-base="4"] span{top:-54px}
+body.portrait .fv-tok-label{font-size:16px;height:22px;line-height:19px;min-width:24px;border-radius:11px}
+body.portrait.touch .fv .fv-skip-user{top:132px;right:212px;height:84px;font-size:30px;padding:0 24px}
+body.portrait.touch .fv.fv-cpu .fv-skip,body.portrait .fv .fv-skip:not(.fv-skip-user){right:212px;bottom:34px;height:84px;font-size:30px;padding:0 24px}
+
+/* ---------------------------------------------------------
+   タッチ操作（#touch-ui）: フィールドの下に並べる。上段 = さいはい・メニュー・盗塁、
+   左下 = 十字キー、右下 = 打ち方の切り替えと大ボタン。送球先の塁は中央にダイヤモンド形
+   --------------------------------------------------------- */
+body.portrait #touch-ui{--dp:clamp(44px,12.4vw,58px);--gap:6px;--zx:clamp(76px,22vw,98px);--pill:46px;--seg:48px;--segw:clamp(56px,16vw,72px)}
+body.portrait #touch-ui .tu-top{top:calc(var(--pt-ctl,60vh) + 8px);left:var(--tu-l);right:auto}
+body.portrait #touch-ui .tu-pill{min-width:0;padding:0 14px!important;font-size:16px}
+body.portrait #touch-ui .tu-mini{right:var(--tu-r);bottom:calc(var(--tu-b) + var(--zx) + 12px)}
+body.portrait #touch-ui .tu-mini .tu-steal{position:fixed;top:calc(var(--pt-ctl,60vh) + 8px);left:auto;right:var(--tu-r);transform:none;min-width:96px}
+body.portrait #touch-ui .tu-seg-btn{font-size:16px}
+body.portrait #touch-ui .tu-act{gap:10px}
+body.portrait #touch-ui .tu-x{margin-bottom:calc(var(--zx) * .22)}
+body.portrait #touch-ui .tu-round{width:var(--zx);height:var(--zx)}
+body.portrait #touch-ui .tu-x{width:calc(var(--zx) * .84);height:calc(var(--zx) * .84)}
+/* 送球先の塁（守備ビュー・捕球後）: 操作エリアの中央にダイヤモンド形 */
+body.portrait #touch-ui[data-mode][data-field-phase="secured"] .tu-bases{left:50%;right:auto;bottom:auto;top:calc(var(--pt-ctl,55vh) + 10px);transform:translateX(-50%);gap:6px}
+body.portrait #touch-ui[data-mode][data-field-phase="secured"] .tu-bases button{min-width:76px;min-height:52px;font-size:19px}
+body.portrait #touch-ui[data-mode="field-assist"][data-field-phase="secured"] .tu-bases{left:calc(50% - 50px)}
+@media (max-width:370px){body.portrait #touch-ui[data-mode][data-field-phase="secured"] .tu-bases button{min-width:66px}}
+
+/* ---------------------------------------------------------
+   メニュー画面（ステージ幅 480・縦長）
+   --------------------------------------------------------- */
+/* 共通ヘッダー（チーム・せってい・オリジナルチーム）: 2 段に折り返す */
+body.portrait .team-header,body.portrait .settings-header{height:auto;flex-wrap:wrap;row-gap:8px;padding:10px 12px;gap:8px}
+body.portrait .team-header h2,body.portrait .settings-header h2{flex:1 1 calc(100% - 150px);min-width:0;margin:0 4px;font-size:26px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.portrait .team-header .spacer{display:none}
+body.portrait .back-btn,body.portrait .tab{height:62px;padding:0 16px;font-size:20px;border-radius:12px;white-space:nowrap}
+body.portrait .team-header>.back-btn,body.portrait .settings-header>.back-btn{flex:none}
+body.portrait .team-header .tab{flex:1 1 120px;min-width:0;padding:0 6px}
+
+/* タイトル */
+body.portrait .title{overflow-x:hidden;overflow-y:auto}
+body.portrait .title .logo{top:14px}
+body.portrait .title .logo-kicker{font-size:18px;letter-spacing:4px}
+body.portrait .title .logo h1{font-size:40px}
+body.portrait .tt-col{left:14px;right:14px;width:auto;top:104px;gap:12px}
+body.portrait .tt-match{height:auto;min-height:84px;padding:8px 10px}
+body.portrait .tt-side{flex-direction:column;gap:2px;flex:1 1 0;min-width:0}
+body.portrait .tt-who{align-items:center;text-align:center}
+body.portrait .mchip{min-width:46px;height:46px;font-size:19px;border-width:3px}
+body.portrait .tt-name{font-size:19px;line-height:1.15}
+body.portrait .tt-who small,body.portrait .tt-vsbox small{font-size:15px}
+body.portrait .tt-vs{font-size:24px}
+body.portrait .tt-rules{flex-wrap:wrap;gap:6px}
+body.portrait .rule-chip{height:40px;font-size:17px;padding:0 12px}
+body.portrait .tt-play{height:104px;font-size:42px;letter-spacing:2px}
+body.portrait .tt-play i{font-size:36px}
+body.portrait .tt-grid{gap:10px}
+body.portrait .tt-sub,body.portrait .tt-help{height:86px}
+body.portrait .tt-sub b,body.portrait .tt-help b{font-size:20px;white-space:nowrap}
+body.portrait .tt-sub small,body.portrait .tt-help small{font-size:16px}
+/* あそびかた・全画面: 2 列ボタンの下。全画面ボタンが無いときはあそびかたを全幅に */
+body.portrait .tt-help{left:14px;top:var(--tt-under,640px);width:calc(50% - 19px)}
+body.portrait .title:not(:has(.fs-btn)) .tt-help{width:auto;right:14px}
+body.portrait .title .fs-btn{top:var(--tt-under,640px);right:14px;left:auto;bottom:auto;width:calc(50% - 19px);height:86px;justify-content:center;font-size:20px}
+body.portrait .title .hero{left:50%;top:calc(var(--tt-under,640px) + 100px);margin-left:-90px;transform:scale(.62);transform-origin:top center}
+body.portrait .title{--tt-under:640px;container-type:size}
+@container (max-height:960px){body.portrait .title .hero{display:none}}
+/* 背景（スタンド・芝生）を縦長に */
+body.portrait .title .stand{top:46%}
+body.portrait .title .stand-line{top:calc(46% + 56px)}
+body.portrait .title .grass{top:calc(46% + 70px);height:auto;bottom:0}
+body.portrait .title .grass-stripe.s1{top:calc(46% + 110px)}
+body.portrait .title .grass-stripe.s2{top:calc(46% + 190px)}
+body.portrait .title .dirt{left:-160px;top:auto;bottom:-140px;width:800px}
+body.portrait .title .cloud.c2{left:330px;width:150px}
+body.portrait .title .cloud.c3{display:none}
+body.portrait .title .footer{position:absolute;height:auto;min-height:34px;padding:4px 12px;flex-wrap:wrap;gap:0 10px;font-size:15px;line-height:1.3}
+/* あそびかたガイド */
+body.portrait .guide-ov{align-items:flex-start;padding:14px;overflow-y:auto}
+body.portrait .gd-card{width:100%;max-height:none;padding:16px 16px 14px;gap:12px;border-radius:20px}
+body.portrait .gd-head{flex-wrap:wrap;gap:8px}
+body.portrait .gd-head h2{font-size:32px}
+body.portrait .gd-tab{height:62px;padding:0 16px;font-size:20px}
+body.portrait .gd-steps{grid-template-columns:1fr;gap:14px}
+body.portrait .gd-step{display:grid;grid-template-columns:120px 1fr;grid-template-rows:auto 1fr;column-gap:12px;text-align:left;padding:12px}
+body.portrait .gd-ill{grid-row:1 / 3;height:96px;margin:0}
+body.portrait .gd-ill svg{height:84px}
+body.portrait .gd-step h3{font-size:22px;margin:0 0 4px}
+body.portrait .gd-step p{font-size:17px}
+body.portrait .gd-num{width:44px;height:44px;font-size:24px}
+body.portrait .gd-close{height:76px;font-size:26px;padding:0 30px}
+body.portrait .gd-note{font-size:15px}
+
+/* チーム・選手: カード（上）と一覧（下）を縦に並べて全体をスクロール */
+body.portrait .team-body{left:10px;right:10px;top:156px;bottom:10px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;overflow-x:hidden}
+body.portrait .roster{width:auto;flex:none;overflow:visible;padding:10px}
+body.portrait .roster-head,body.portrait .row{grid-template-columns:30px 1fr 52px 52px 56px 52px}
+body.portrait .roster-head{font-size:15px;height:26px}
+body.portrait .row{height:62px;font-size:18px;padding:0 4px}
+body.portrait .row .nm{flex-wrap:wrap;column-gap:6px;row-gap:0;white-space:normal;line-height:1.1}
+body.portrait .row .nm small{font-size:15px}
+body.portrait .row .badge{width:36px;height:36px;font-size:19px}
+body.portrait .player-card{order:-1;flex:none;padding:12px}
+body.portrait .card-top{gap:10px;align-items:flex-start}
+body.portrait .face-box{width:96px;height:96px;padding-top:14px;--chibi:.66}
+body.portrait .pos-pill{font-size:15px}
+body.portrait .card-meta{display:block;margin:4px 0 0;font-size:15px}
+body.portrait .player-card h2{font-size:28px}
+body.portrait .chip{font-size:15px}
+body.portrait .model-text{font-size:15px}
+body.portrait .overall{width:62px;height:62px;font-size:30px}
+body.portrait .overall small{font-size:11px;white-space:nowrap;transform:scale(.9)}
+body.portrait .ability-grid{grid-template-columns:repeat(4,1fr)}
+body.portrait .ability-tile .lbl{font-size:15px}
+body.portrait .ability-tile .num{font-size:16px}
+body.portrait .legend{font-size:15px}
+body.portrait .legend .badge{width:24px;height:24px;font-size:15px}
+body.portrait .stat-tile .lbl{font-size:15px}
+body.portrait .stat-tile .val{font-size:22px}
+body.portrait .player-card .card-extra{flex:none;overflow:visible}
+body.portrait .ex-sec h4{font-size:15px}
+body.portrait .pitch{font-size:16px}
+body.portrait .sk-list.two{grid-template-columns:1fr}
+body.portrait .sk-name,body.portrait .sk-list.two .sk-name{font-size:15px;min-width:110px}
+body.portrait .sk-desc,body.portrait .sk-list.two .sk-desc{font-size:15px}
+body.portrait .player-card .card-actions{flex-wrap:wrap}
+body.portrait .card-actions .btn{height:64px;font-size:19px}
+
+/* せってい: 1 列でスクロール */
+body.portrait .settings-header .set-tabs{flex:1 1 100%;margin:0}
+body.portrait .settings-header .tab{flex:1;height:62px;font-size:20px}
+body.portrait .settings-header h2{font-size:26px}
+body.portrait .settings .settings-body{top:156px;display:flex;flex-direction:column;gap:18px;padding:16px 14px 24px;overflow-y:auto}
+body.portrait .settings .settings-body .set-group h3{font-size:20px;margin:0 0 6px}
+body.portrait .settings .settings-body .seg{gap:6px}
+body.portrait .settings .settings-body.set-play .seg-btn,body.portrait .settings .settings-body .seg-btn,body.portrait .settings .settings-body .seg-vol .seg-btn,body.portrait .settings .settings-body .seg-5 .seg-btn{height:64px;font-size:19px;padding:0 2px;border-width:3px}
+body.portrait .settings .settings-body .set-help{font-size:15px;min-height:20px}
+body.portrait .settings .settings-body .set-test{height:64px;font-size:20px}
+
+/* 結果: 縦 1 列でスクロール */
+body.portrait .result{display:flex;flex-direction:column;align-items:stretch;gap:14px;padding:16px 12px 20px;overflow-y:auto;overflow-x:hidden}
+body.portrait .result>*{position:relative;left:auto;right:auto;top:auto;bottom:auto;width:auto;height:auto;flex:none}
+body.portrait .result-kicker{font-size:18px;letter-spacing:6px}
+body.portrait .result h1{font-size:38px}
+body.portrait .score-row{gap:18px}
+body.portrait .score-row .num{font-size:72px;min-width:80px}
+body.portrait .linescore{padding:8px 10px}
+body.portrait .ls-row{grid-template-columns:92px repeat(var(--cols,9),1fr) 32px 32px 32px;font-size:16px;height:34px}
+body.portrait .ls-row.head{font-size:15px}
+body.portrait .ls-row .tn{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:15px}
+body.portrait .mvp{gap:12px;padding:12px 14px}
+body.portrait .mvp .face{width:90px;height:90px;padding-top:18px;--chibi:.55}
+body.portrait .mvp .tag{font-size:15px}
+body.portrait .mvp .nm{font-size:26px}
+body.portrait .mvp .st{font-size:16px}
+body.portrait .pitchers{padding:8px 16px}
+body.portrait .pitchers .prow{font-size:19px}
+body.portrait .result-btns{flex-direction:column;gap:12px}
+body.portrait .result-btns .btn{width:auto;height:66px;font-size:22px}
+
+/* オリジナルチーム: ヘッダー 3 段（もどる・見出し・保存 / コスト / タブ）、パネルは縦に並べて全体をスクロール */
+body.portrait .te-header .te-hbtn{height:62px;font-size:19px;padding:0 12px}
+body.portrait .te-header>.back-btn{order:1}
+body.portrait .te-header>h2{order:2;font-size:24px;flex:1 1 120px}
+body.portrait .te-header>.te-save{order:3}
+body.portrait .te-header>.te-meter{order:4;flex:1 1 100%;max-width:none;min-width:0}
+body.portrait .te-header>.tab{order:5;flex:1 1 160px}
+body.portrait .te-meter-lbl,body.portrait .te-meter-note{font-size:15px}
+body.portrait .te-body,body.portrait .te-body3{left:10px;right:10px;top:var(--te-top,232px);bottom:10px;flex-direction:column;gap:12px;overflow-y:auto;overflow-x:hidden}
+body.portrait .te-panel{flex:none}
+body.portrait .te-pool{width:auto;height:680px}
+body.portrait .te-ros{height:620px}
+body.portrait .te-panel h3{font-size:20px}
+body.portrait .te-filters{flex-wrap:wrap}
+body.portrait .te-search{flex:1 1 100%}
+body.portrait .te-seg-btn,body.portrait .te-posbtn{height:60px;min-width:56px;font-size:17px}
+body.portrait .te-pool .te-poschips{gap:3px}
+body.portrait .te-pool .te-posbtn{min-width:36px;padding:0 2px}
+body.portrait .te-search input{height:60px;font-size:max(17px,calc(16px / var(--scale,1)))}
+body.portrait .te-count{font-size:16px}
+body.portrait .te-row{min-height:66px}
+body.portrait .te-nm b{font-size:19px}
+body.portrait .te-nm small{font-size:15px}
+body.portrait .te-chip{font-size:15px}
+body.portrait .te-st{width:32px}
+body.portrait .te-st i{font-size:15px}
+body.portrait .te-st .badge{width:28px;height:26px;font-size:16px}
+body.portrait .te-act{font-size:26px;width:30px}
+body.portrait .te-btn{height:62px;font-size:18px;padding:0 12px}
+body.portrait .te-ros-head{flex-wrap:wrap}
+body.portrait .te-need span,body.portrait .te-errs,body.portrait .te-sec,body.portrait .te-hint,body.portrait .te-empty{font-size:15px}
+body.portrait .te-pos{min-width:34px;height:34px;font-size:17px}
+body.portrait .te-msg{left:12px;right:12px;bottom:16px;transform:none;max-width:none;white-space:normal;text-align:center;font-size:18px;border-radius:18px}
+body.portrait .te-body3>.te-panel:nth-child(1),body.portrait .te-body3>.te-panel:nth-child(2){width:auto}
+body.portrait .te-body3>.te-panel:nth-child(3){flex:none;height:600px}
+body.portrait .te-slot-main{min-height:60px}
+body.portrait .te-ord{font-size:20px}
+body.portrait .te-role{width:64px;font-size:15px}
+body.portrait .te-mv{width:60px;height:60px;font-size:20px}
+body.portrait .te-strip{position:relative;left:auto;right:auto;bottom:auto;height:auto;flex:none;flex-wrap:wrap;gap:10px;padding:12px}
+body.portrait .te-lbl{font-size:17px}
+body.portrait .te-name{flex:1 1 200px;width:auto;height:60px;font-size:max(18px,calc(16px / var(--scale,1)))}
+body.portrait .te-sws{flex-wrap:wrap}
+body.portrait .te-sw{width:56px;height:56px}
+body.portrait .te-decide{flex:1 1 100%;margin:0}
+
+/* あいてを選ぶ（現在は無効: main.js OPPONENT_PICKER） */
+body.portrait .opp-card{width:452px;max-height:calc(100% - 40px);padding:16px}
+body.portrait .opp-row{height:66px;font-size:22px}
+body.portrait .opp-cancel,body.portrait .opp-go{height:66px;font-size:20px}
+body.portrait .opp-help{display:none}
+body.portrait .title .stand-line::before{left:24px}
+body.portrait .title .stand-line::after{left:auto;right:24px}
+/* 投球の球種・案内（コース選び・タイミング）: 切り出し範囲に収まるよう 2 段に */
+body.portrait .game>.pitch-sel{top:296px;flex-direction:column;align-items:center;gap:0;max-width:740px;white-space:nowrap}
+body.portrait .game>.pitch-sel span{font-size:22px}

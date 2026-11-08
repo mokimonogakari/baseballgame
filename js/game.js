@@ -1308,7 +1308,7 @@ export function createGameScreen(el, ctx) {
     void dom.overlay.offsetWidth; // 連続表示でもスタンプのアニメを頭から
     // 長い文言（「〇〇の攻撃」など）はステージ幅に収まるよう文字を縮める
     dom.overlayBig.style.fontSize = '';
-    const w = dom.overlayBig.scrollWidth, maxW = 1180;
+    const w = dom.overlayBig.scrollWidth, maxW = Math.min(1180, (dom.overlay.clientWidth || 1200) - 20); // 縦向きは表示幅が狭い（css/portrait.css）
     if (w > maxW) dom.overlayBig.style.fontSize = `${Math.floor(parseFloat(getComputedStyle(dom.overlayBig).fontSize) * maxW / w)}px`;
     dom.overlay.classList.add('show');
     later(() => {

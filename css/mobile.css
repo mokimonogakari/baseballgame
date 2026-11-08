@@ -22,22 +22,7 @@ html{-webkit-tap-highlight-color:transparent}
   .te-scroll,.roster,.sb-body,.opp-list,.settings-body,[data-scroll]{touch-action:pan-y;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 }
 
-/* ---------- 横向きにしてね ---------- */
-#rotate-hint{display:none;position:fixed;inset:0;z-index:10000;background:#1C2B4B;color:#fff;align-items:center;justify-content:center;text-align:center;
-  font-family:var(--font);touch-action:none;-webkit-user-select:none;user-select:none;padding:env(safe-area-inset-top,0px) 24px env(safe-area-inset-bottom,0px)}
-#rotate-hint::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(115deg,#1C2B4B 0 60px,#22345A 60px 120px);opacity:.7}
-.rh-inner{position:relative;display:flex;flex-direction:column;align-items:center;gap:8px}
-.rh-inner svg{display:block}
-.rh-phone{width:132px;height:132px;animation:rh-turn 2.4s ease-in-out infinite;filter:drop-shadow(0 6px 0 rgba(8,14,30,.5))}
-.rh-arrow{position:absolute;top:-6px;width:150px;height:150px;opacity:.85;animation:rh-fade 2.4s ease-in-out infinite}
-.rh-inner p{margin:22px 0 0;font-size:26px;font-weight:900;letter-spacing:2px;color:#FFD54A;text-shadow:3px 3px 0 #0E1830}
-@keyframes rh-turn{0%,15%{transform:rotate(0)}45%,80%{transform:rotate(-90deg)}100%{transform:rotate(0)}}
-@keyframes rh-fade{0%,10%{opacity:0}25%,45%{opacity:.85}60%,100%{opacity:0}}
-@media (orientation:portrait) and (pointer:coarse){
-  #rotate-hint{display:flex}
-  #touch-ui{display:none!important}
-}
-@media (prefers-reduced-motion:reduce){.rh-phone{animation:none;transform:rotate(-90deg)}.rh-arrow{animation:none}}
+/* 縦向き（body.portrait）は css/portrait.css。以前の「横向きにしてあそんでね」表示はなくした */
 
 /* ---------- 全画面ボタン（タイトル。タッチ端末のみ） ---------- */
 .fs-btn{display:none;position:absolute;right:24px;top:20px;z-index:5;height:56px;padding:0 20px 0 16px;align-items:center;gap:8px;border:4px solid var(--navy);border-radius:14px;

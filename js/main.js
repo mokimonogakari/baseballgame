@@ -7,6 +7,7 @@ import { boxScore } from './engine.js';
 import { renderTeamEdit, loadMyTeam, MY_TEAM_ID } from './teamedit.js';
 import { createSound } from './sound.js';
 import { createMusic } from './music.js';
+import { createPortraitHud } from './portrait.js';
 import { initTouch, canFullscreen, isFullscreenOrStandalone, enterFullscreen } from './touch.js';
 
 const stage = document.getElementById('stage');
@@ -24,19 +25,83 @@ let oppModal = null;
 /** 試合前の「あいてを選ぶ」モーダル（false: たいせん・試合へ・もう一度あそぶ で即試合開始） */
 const OPPONENT_PICKER = false;
 
+const hud = createPortraitHud({ getRoot: () => (current === 'game' ? screens.game : null) });
 let stageScale = 1;
+/** 縦向き（スマホ・タブレットを縦に持ったとき）のメニュー画面の論理幅。高さは画面の縦横比に合わせる */
+const PORTRAIT_W = 480;
+const PORTRAIT_MIN_H = 880;
+/** 縦向きの試合画面: 1280×720 のステージから切り出す範囲（打席 = ゾーン・投手・打者・捕手 / 守備 = ダイヤモンドと外野） */
+const CROP_BAT = { x: 260, y: 130, w: 760, h: 590 };
+const CROP_FIELD = { x: 200, y: 120, w: 880, h: 580 };
+/** 縦向きの試合画面で、ステージの下にタッチ操作のために残す最低の高さ（CSS px） */
+const PORTRAIT_MIN_CTL = 228;
+const coarseMQ = typeof matchMedia === 'function' ? matchMedia('(pointer: coarse)') : { matches: false };
+let portraitView = '';
+/** 縦向きか（タッチ端末で縦長の画面）。マウスの PC は縦長ウィンドウでも従来どおり 1280×720 を縮小 */
+function portraitNow(w, h) { return !!coarseMQ.matches && h > w; }
+function portraitGameView() {
+  if (current !== 'game') return '';
+  return screens.game.querySelector('.fv') ? 'field' : 'bat';
+}
 /** 1280×720 のステージを画面に収める。#stage-wrap の padding = safe-area（ノッチ）を除いた領域で計算 */
 function fitStage() {
   const cs = getComputedStyle(wrap);
   const px = (v) => parseFloat(v) || 0;
   const w = (wrap.clientWidth || window.innerWidth) - px(cs.paddingLeft) - px(cs.paddingRight);
   const h = (wrap.clientHeight || window.innerHeight) - px(cs.paddingTop) - px(cs.paddingBottom);
-  const scale = Math.max(0.05, Math.min(w / 1280, h / 720));
-  stageScale = scale;
-  stage.style.setProperty('--scale', scale);
-  // 小さい画面（スマホ横向きなど）では重要な文字・ボタンを大きくする
-  document.body.classList.toggle('compact', scale < 0.6);
+  const portrait = portraitNow(w, h);
+  const body = document.body;
+  const root = document.documentElement.style;
+  body.classList.toggle('portrait', portrait);
+  portraitView = portrait ? portraitGameView() : '';
+  body.dataset.pview = portraitView;
+  if (!portrait) {
+    stage.style.width = stage.style.height = stage.style.transform = stage.style.clipPath = '';
+    const scale = Math.max(0.05, Math.min(w / 1280, h / 720));
+    stageScale = scale;
+    stage.style.setProperty('--scale', scale);
+    // 小さい画面（スマホ横向きなど）では重要な文字・ボタンを大きくする
+    body.classList.toggle('compact', scale < 0.6);
+    return;
+  }
+  if (portraitView) {
+    // 試合: 1280×720 の中央（守備ビューはダイヤモンド全体）を切り出して横幅いっぱいに。上は情報バー、下はタッチ操作
+    const crop = portraitView === 'field' ? CROP_FIELD : CROP_BAT;
+    const padT = px(cs.paddingTop);
+    const top = Math.max(0, hud.height() - padT); // 情報バーは safe-area の上端から（ステージは padding の内側）
+    let scale = w / crop.w;
+    if (h - top - crop.h * scale < PORTRAIT_MIN_CTL) scale = Math.max(0.05, (h - top - PORTRAIT_MIN_CTL) / crop.h);
+    const offX = (w - crop.w * scale) / 2;
+    stageScale = scale;
+    stage.style.width = '1280px';
+    stage.style.height = '720px';
+    stage.style.setProperty('--scale', scale);
+    stage.style.transform = `translate(${(offX - crop.x * scale).toFixed(2)}px, ${(top - crop.y * scale).toFixed(2)}px) scale(${scale.toFixed(5)})`;
+    stage.style.clipPath = `inset(${crop.y}px ${1280 - crop.x - crop.w}px ${720 - crop.y - crop.h}px ${crop.x}px)`;
+    // css/portrait.css 用: フィールドの上端・下端（画面の上からの CSS px）。タッチ操作はフィールドの下へ
+    root.setProperty('--pt-top', `${Math.round(padT + top)}px`);
+    root.setProperty('--pt-ctl', `${Math.round(padT + top + crop.h * scale)}px`);
+    body.classList.toggle('compact', scale < 0.6);
+  } else {
+    // メニュー画面: 幅 560 の縦長ステージ（css/portrait.css の縦レイアウト）
+    // 縦長でない画面（タブレットなど）は幅を広げて、高さ PORTRAIT_MIN_H を確保
+    const pw = Math.max(PORTRAIT_W, Math.round(PORTRAIT_MIN_H * w / h));
+    const scale = w / pw;
+    stageScale = scale;
+    stage.style.width = `${pw}px`;
+    stage.style.height = `${Math.round(h / scale)}px`;
+    stage.style.setProperty('--scale', scale);
+    stage.style.transform = `scale(${scale.toFixed(5)})`;
+    stage.style.clipPath = '';
+    body.classList.remove('compact');
+  }
 }
+/** 縦向きの試合中: 守備ビューの開閉で切り出す範囲を変える */
+setInterval(() => {
+  if (!document.body.classList.contains('portrait')) return;
+  hud.sync();
+  if (portraitGameView() !== portraitView) fitStage();
+}, 100);
 
 const SETTINGS_KEY = 'dokidoki.settings';
 const DEFAULTS = { innings: 3, difficulty: 'normal', sound: true, music: true, musicVolume: 0.7, cursorSpeed: 3, pitchMode: 'manual', fieldMode: 'assist', watchPlays: 'all', battingAssist: null };
@@ -120,16 +185,6 @@ function launchChallenge() {
   unlockAudio();
   openChallenge({ sound, onClose() {} });
 }
-const quickButton = document.createElement('button');
-quickButton.className = 'ch-launch';
-quickButton.textContent = '⚾ 縦で遊ぶ · 10球チャレンジ';
-quickButton.onclick = launchChallenge;
-document.querySelector('.rh-inner').append(quickButton);
-const quickNote = document.createElement('p');
-quickNote.className = 'ch-note';
-quickNote.textContent = '片手でスイング！ 通常試合は横向きで遊べます';
-document.querySelector('.rh-inner').append(quickNote);
-
 /* ---------- あいてを選ぶ ---------- */
 function closeOppModal() {
   if (oppModal) { oppModal.el.remove(); oppModal = null; }
@@ -189,9 +244,6 @@ function go(name, payload) {
   if (gameScreen) { try { gameScreen.destroy(); } catch (e) { console.error(e); } gameScreen = null; }
   current = name;
   document.body.dataset.screen = name;
-  document.querySelector('.rh-inner > p').textContent = name === 'title' ? '片手で、ひと勝負！' : '横向きにしてあそんでね';
-  quickButton.hidden = name !== 'title';
-  quickNote.hidden = name !== 'title';
   try {
     if (name === 'title') music.play('title');
     else if (name === 'team' || name === 'teamedit') music.play('title');
@@ -210,6 +262,7 @@ function go(name, payload) {
   for (const [k, el] of Object.entries(screens)) el.hidden = k !== name;
   const el = screens[name];
   el.innerHTML = '';
+  fitStage(); // 縦向きは画面ごとにステージの大きさが違う。描画の前に合わせる（試合画面の文字幅の計算などのため）
   if (name === 'title') { renderTitle(el, ctx); addFullscreenButton(el); }
   else if (name === 'team') renderTeam(el, ctx);
   else if (name === 'settings') renderSettings(el, ctx);
@@ -218,6 +271,8 @@ function go(name, payload) {
     gameScreen = createGameScreen(el, gameCtx());
     gameScreen.start();
   } else if (name === 'result') renderResult(el, ctx, boxScore(payload), payload);
+  hud.sync();
+  fitStage(); // 縦向きでは画面ごとにステージの形が変わる
 }
 
 /** タイトルの「全画面」ボタン（Fullscreen API があり、まだ全画面・ホーム画面アプリでないときだけ） */
@@ -254,7 +309,6 @@ function typingTarget(e) {
 window.addEventListener('keydown', (e) => {
   if (document.body.classList.contains('challenge-open')) return;
   if (typingTarget(e)) return;
-  if (touch.isRotateBlocking()) { e.preventDefault(); return; } // 縦向きの「横向きにして」表示中は入力を止める
   if (oppModal) {
     const k = KEYMAP[e.key];
     if (k || e.key === ' ') { e.preventDefault(); if (k) oppModal.key(k); }

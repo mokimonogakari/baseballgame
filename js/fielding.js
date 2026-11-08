@@ -83,6 +83,11 @@ export function project(x, y, z = 0) {
   return { X: CX + x * KX * s, Y: HORIZON + (HOME_SY - HORIZON) * s - z * KZ * s, s };
 }
 
+/** 縦向き（body.portrait）は守備ビューを小さく縮めて全体を見せるので、選手・ボールを大きめに描く（見た目だけ） */
+function viewZoom() {
+  return typeof document !== 'undefined' && document.body?.classList.contains('portrait') ? 1.45 : 1;
+}
+
 function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -575,7 +580,7 @@ ${userControlled && !isHR ? `
 
   function placeTok(el, x, y, extraScale = 1) {
     const p = project(x, y);
-    const k = (0.55 + 0.55 * p.s) * extraScale;
+    const k = (0.55 + 0.55 * p.s) * extraScale * viewZoom();
     el.style.transform = `translate(${p.X.toFixed(1)}px,${p.Y.toFixed(1)}px) scale(${k.toFixed(3)})`;
     el.style.zIndex = String(100 + Math.round(p.Y));
     return p;
@@ -737,7 +742,7 @@ ${userControlled && !isHR ? `
     // ボール
     const ps = project(b.x, b.y, 0);
     const pb = pbView;
-    const bk = 0.55 + 0.6 * ps.s;
+    const bk = (0.55 + 0.6 * ps.s) * viewZoom();
     dom.ball.style.transform = `translate(${pb.X.toFixed(1)}px,${pb.Y.toFixed(1)}px) scale(${bk.toFixed(3)})`;
     const bz = b.z > 0.6 ? 2000 : 100 + Math.round(ps.Y) + 1;
     dom.ball.style.zIndex = String(bz);

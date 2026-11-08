@@ -7,7 +7,7 @@
   "scope": "./",
   "display": "fullscreen",
   "display_override": ["fullscreen", "standalone"],
-  "orientation": "landscape",
+  "orientation": "any",
   "theme_color": "#1C2B4B",
   "background_color": "#1C2B4B",
   "categories": ["games", "sports"],

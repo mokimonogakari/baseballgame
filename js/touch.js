@@ -13,7 +13,7 @@
  *   手動投球（設定 pitchMode 'manual'）: 球種ボタンのタップ（1 回で決定）→ ドラッグ/タップでコース →「投げる」→
  *   縮むリングが重なった瞬間に「いま！」（または画面のどこかをタップ）。
  * - 守備ビュー: 野手操作（field）、おまかせ守備（field-assist: 捕ったら送球先の塁ボタンだけ）、CPU 守備（field-cpu: タップでスキップ）。
- * - 縦向きでは「横向きにしてあそんでね」（#rotate-hint）を出して入力を止める。
+ * - 縦向きでも遊べる（body.portrait。main.js の fitStage がステージを切り出し、css/portrait.css が操作をステージの下へ並べる）。
  * - ダブルタップ拡大・ピンチ・長押しメニューなどスマホ特有の誤動作を抑える。
  *
  * export function initTouch(opts) → { isCoarse(), isRotateBlocking(), releaseAll() }
@@ -41,19 +41,18 @@ export async function enterFullscreen() {
     if (el.requestFullscreen) await el.requestFullscreen({ navigationUI: 'hide' });
     else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
   } catch (e) { return false; }
-  try { await screen.orientation?.lock?.('landscape'); } catch (e) { /* 未対応の端末では無視 */ }
   return true;
 }
 
 /* ---------------- タッチ操作 ---------------- */
-const SCROLLABLE = '.te-scroll, .roster, .sb-body, .opp-list, .settings-body, .te-panel, [data-scroll]';
+const SCROLLABLE = '.te-scroll, .roster, .sb-body, .opp-list, .settings-body, .te-panel, [data-scroll], .team-body, .te-body, .result, .gd-card, .title';
 
 export function initTouch({ stage, wrap, getGame, getCurrent, getScale }) {
   const coarseMQ = mm('(pointer: coarse)');
-  const portraitMQ = mm('(orientation: portrait)');
   const body = document.body;
   const isCoarse = () => !!coarseMQ.matches;
-  const isRotateBlocking = () => isCoarse() && !!portraitMQ.matches;
+  const isRotateBlocking = () => false; // 縦向きでも遊べる（以前は縦向きで入力を止めていた）
+  const isPortrait = () => body.classList.contains('portrait');
 
   const ui = document.createElement('div');
   ui.id = 'touch-ui';
@@ -196,7 +195,7 @@ export function initTouch({ stage, wrap, getGame, getCurrent, getScale }) {
       return;
     }
     if (drag || typeof g.dragCursor !== 'function') return;
-    if (e.clientX > window.innerWidth * 0.72) return; // 右側は Z/X 用に空けておく
+    if (!isPortrait() && e.clientX > window.innerWidth * 0.72) return; // 横向き: 右側は Z/X 用に空けておく（縦向きはボタンがフィールドの下）
     if (e.target.closest?.('button, input, select, textarea, a, .sb, .fv, .opp-modal')) return;
     const p = toStage(e.clientX, e.clientY);
     let zone = false;
@@ -290,9 +289,8 @@ export function initTouch({ stage, wrap, getGame, getCurrent, getScale }) {
     body.classList.toggle('touch', isCoarse());
     sync();
   }
-  const onOrient = () => { if (isRotateBlocking()) releaseAll(); sync(); };
+  const onOrient = () => { releaseAll(); sync(); }; // 向きが変わったら押しっぱなしを離す（ボタンの位置が変わるため）
   coarseMQ.addEventListener?.('change', applyPointer);
-  portraitMQ.addEventListener?.('change', onOrient);
   window.addEventListener('orientationchange', onOrient);
   applyPointer();
 
