@@ -192,3 +192,8 @@
 .fv-cpu{cursor:pointer}
 /* タッチ端末の送球選択中はプロンプトが上部（top:96px）に来るので、コールアウトは小さくその上へ */
 body.touch .fv-user[data-phase="secured"] .fv-callout{top:40px;font-size:30px;padding:0 20px 3px;border-width:3px}
+/* 守備のスキップ（ユーザー守備中も表示。タッチ端末でも出す） */
+.fv-skip-user{top:16px;bottom:auto;right:16px;height:44px;font-size:16px;display:inline-flex;align-items:center;gap:8px;opacity:.92}
+.fv-skip-user small{font-size:12px;padding:1px 6px;border-radius:6px;background:#1C2B4B;color:#FFD54A}
+body.touch .fv .fv-skip-user{display:inline-flex!important;height:52px;font-size:19px}
+body.touch .fv .fv-skip-user small{display:none}

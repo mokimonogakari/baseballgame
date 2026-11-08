@@ -130,6 +130,7 @@ export function createFieldingView(container, opts = {}) {
   const judge = typeof opts.previewPlay === 'function' ? opts.previewPlay : null;
   const engThrowTime = typeof opts.throwTime === 'function' ? opts.throwTime : null;
   const engSuggest = typeof opts.suggestThrow === 'function' ? opts.suggestThrow : null;
+  let autoAll = false;       // スキップ: 残りを CPU 守備で一気に処理
   let verdict = null;        // 送球後の判定（previewPlay の結果）
   const timers = [];         // シミュレーション時間のタイマー
   const later = (fn, sec) => timers.push({ at: t + sec, fn });
@@ -468,7 +469,8 @@ ${userControlled && !isHR ? `
 <div class="fv-actions">
   <button type="button" class="fv-btn-x" data-key="x" aria-label="X"><b>X</b><small data-ref="x-label">切替</small></button>
   <button type="button" class="fv-btn-z" data-key="z" aria-label="Z"><b>Z</b><small data-ref="z-label">キャッチ</small></button>
-</div>` : `<button type="button" class="fv-skip" data-key="enter">${opts.tapToSkip ? 'タップ / Enter:スキップ ▶▶' : 'Enter:スキップ ▶▶'}</button>`}`;
+</div>
+<button type="button" class="fv-skip fv-skip-user" data-key="skip" aria-label="守備をスキップ（S）">スキップ ▶▶<small>S</small></button>` : `<button type="button" class="fv-skip" data-key="enter">${opts.tapToSkip ? 'タップ / Enter:スキップ ▶▶' : 'Enter:スキップ ▶▶'}</button>`}`;
   }
 
   function bindTouch() {
@@ -977,11 +979,11 @@ ${userControlled && !isHR ? `
         continue;
       }
       if (f === holder) { f.moving = false; continue; }
-      if (phase === 'live' && f === user && userControlled && assistMode) {
+      if (phase === 'live' && f === user && userControlled && assistMode && !autoAll) {
         if (t >= f.react) moveToward(f, intercept(f, t), dt); else f.moving = false; // おまかせ: 最短で打球へ
         continue;
       }
-      if (phase === 'live' && f === user && userControlled) {
+      if (phase === 'live' && f === user && userControlled && !autoAll) {
         const vx = (held.right ? 1 : 0) - (held.left ? 1 : 0);
         const vy = (held.up ? 1 : 0) - (held.down ? 1 : 0);
         const m = Math.hypot(vx, vy);
@@ -1020,7 +1022,7 @@ ${userControlled && !isHR ? `
       // 停止したボールの回収
       if (t > PEND + 0.4 && !retrieveAssigned) {
         retrieveAssigned = true;
-        const cands = fielders.filter((f) => f !== user || !userControlled);
+        const cands = fielders.filter((f) => f !== user || !userControlled || autoAll);
         cands.sort((a, c) => Math.hypot(b.x - a.x, b.y - a.y) - Math.hypot(b.x - c.x, b.y - c.y));
         cands.slice(0, 2).forEach((f) => { f.role = 'retrieve'; });
       }
@@ -1031,8 +1033,8 @@ ${userControlled && !isHR ? `
     } else if (phase === 'bobble') {
       if (t >= bobbleUntil) enterSecured();
     } else if (phase === 'secured') {
-      const wait = !userControlled ? CPU_HOLD_S : assistMode ? AUTO_THROW_REAL_S * SLOW_SECURED : AUTO_THROW_S;
-      if (t - securedAt >= wait) doThrow(userControlled ? selBase : smartBase());
+      const wait = !userControlled || autoAll ? CPU_HOLD_S : assistMode ? AUTO_THROW_REAL_S * SLOW_SECURED : AUTO_THROW_S;
+      if (t - securedAt >= wait) doThrow(userControlled ? (autoAll ? selBase ?? smartBase() : selBase) : smartBase());
     } else if (phase === 'throw') {
       if (t >= throwInfo.start + throwInfo.dur) {
         const recv = fielders.filter((f) => f !== holder).sort((a, c) => dist(a, throwInfo.to) - dist(c, throwInfo.to))[0];
@@ -1092,6 +1094,16 @@ ${userControlled && !isHR ? `
     rafId = requestAnimationFrame(frame);
   }
 
+  /** スキップ（S キー / スキップボタン）: ユーザー守備でも残りを CPU 守備に任せて結果まで進める */
+  function skipNow() {
+    if (calledDone) return;
+    if (userControlled && !isHR && !autoAll) {
+      autoAll = true;
+      if (user && user.role === 'user') user.role = 'chase';
+    }
+    skipToEnd();
+  }
+
   function skipToEnd() {
     let guard = 0;
     while (phase !== 'done' && guard++ < MAX_SIM_S * 2 / DT) step(DT);
@@ -1139,6 +1151,7 @@ ${userControlled && !isHR ? `
   }
 
   function handleKey(key, isDown = true) {
+    if (isDown && (key === 'skip' || key === 'steal')) { skipNow(); return; }
     if (destroyed) return;
     if (isDown && userControlled && phase === 'secured' && /^base[1-4]$/.test(key)) {
       selBase = Number(key.slice(-1)); doThrow(selBase); return;
