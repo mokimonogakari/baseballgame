@@ -183,3 +183,4 @@ import './systems.test.mjs';
 import './challenge.test.mjs';
 import './power.test.mjs';
 import './contact.test.mjs';
+import './fastforward.test.mjs';

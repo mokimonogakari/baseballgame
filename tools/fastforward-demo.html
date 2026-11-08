@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>早送り デモ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/fastforward.css">
+<style>
+  .demo-idle{position:absolute;inset:0;display:flex;flex-direction:column;gap:18px;align-items:center;justify-content:center;color:#fff;font-size:30px;font-weight:900;
+    background:repeating-linear-gradient(115deg,#1C2B4B 0 60px,#22345A 60px 120px)}
+  .demo-idle button{height:80px;padding:0 40px;font-size:30px;font-weight:900;border-radius:18px;border:4px solid #1C2B4B;background:#FFD54A}
+  .demo-idle pre{font-size:18px;font-weight:700;color:#B8C4DB;margin:0;white-space:pre-wrap;max-width:1000px}
+</style>
+</head>
+<body>
+<!--
+  守備オートの早送り画面（js/fastforward.js）の単体デモ。
+  ?inning=5&seed=3&speed=2|4|end&innings=9 — ユーザー（先攻）の守備 = inning 回裏から早送りを始める。
+  キー: Z/Enter = はやく、Esc/X = ふつうに見る。
+-->
+<div id="stage-wrap"><div id="stage"><div class="demo-idle" id="idle">準備中…</div></div></div>
+<script type="module">
+import * as engine from '../js/engine.js';
+import { TEAMS } from '../js/data.js';
+import { createFastForward, isUserDefending } from '../js/fastforward.js';
+
+const q = new URLSearchParams(location.search);
+const stage = document.getElementById('stage');
+const idle = document.getElementById('idle');
+const coarse = matchMedia('(pointer: coarse)').matches;
+document.body.classList.toggle('touch', coarse);
+function fit() {
+  const s = Math.max(0.05, Math.min(innerWidth / 1280, innerHeight / 720));
+  stage.style.setProperty('--scale', s);
+  document.body.classList.toggle('compact', s < 0.6);
+}
+addEventListener('resize', fit); fit();
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+const seed = Number(q.get('seed') || 3);
+const rng = mulberry32(seed);
+const inning = Number(q.get('inning') || 5);
+const innings = Number(q.get('innings') || 9);
+const speedQ = q.get('speed');
+const speed = speedQ === 'end' ? 'end' : Number(speedQ || 2);
+
+// ユーザー = 先攻（away）。inning 回裏の頭まで CPU 同士で進める
+let state = engine.createGame(TEAMS[0], TEAMS[1], { innings, userSide: 'away', seed });
+state = { ...state, autoUserPitcher: true };
+for (let g = 0; g < 4000 && !state.over && !(state.inning === inning && state.half === 'bottom'); g++) {
+  const pitch = engine.choosePitch(state, rng);
+  if (!pitch.intentional) pitch.loc = engine.pitchLocation(state, pitch, rng);
+  state = engine.resolvePitch(state, pitch, pitch.intentional ? null : engine.chooseSwing(state, pitch, rng), rng).state;
+}
+
+const sound = { play: (n) => { (window.__ffSounds ||= []).push(n); } };
+let ff = null;
+function startFF() {
+  idle.hidden = true;
+  window.__ffDone = null;
+  window.__ffPlays = 0;
+  ff = createFastForward(stage, {
+    engine, state, rng, speed, userSide: 'away', sound,
+    onPlay(event, st) { window.__ffPlays++; },
+    onDone(st, info) {
+      window.__ffDone = info.reason;
+      state = st;
+      setTimeout(() => {
+        ff?.destroy(); ff = null;
+        const sc = engine.summary(st).score;
+        idle.innerHTML = `<div>onDone: ${info.reason}（${info.steps}球）</div><pre>${engine.summary(st).inningLabel}　${st.teams.away.short} ${sc.away} - ${sc.home} ${st.teams.home.short}</pre><button id="again">もう一度（次の守備から）</button>`;
+        idle.hidden = false;
+        document.getElementById('again').onclick = () => {
+          // 次のユーザーの守備まで CPU で進める
+          for (let g = 0; g < 2000 && !state.over && !isUserDefending(engine, state, 'away'); g++) {
+            const p = engine.choosePitch(state, rng);
+            if (!p.intentional) p.loc = engine.pitchLocation(state, p, rng);
+            state = engine.resolvePitch(state, p, p.intentional ? null : engine.chooseSwing(state, p, rng), rng).state;
+          }
+          startFF();
+        };
+      }, info.reason === 'normal' ? 0 : 400);
+    },
+  });
+  window.__ff = ff;
+}
+addEventListener('keydown', (e) => {
+  const map = { z: 'z', Z: 'z', Enter: 'enter', Escape: 'esc', x: 'x', X: 'x' };
+  if (ff && map[e.key] && ff.handleKey(map[e.key])) e.preventDefault();
+});
+startFF();
+</script>
+</body>
+</html>

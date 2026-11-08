@@ -1,0 +1,150 @@
+/* 守備オートの早送り画面（js/fastforward.js）。ステージ 1280×720 内に重ねる */
+.ff{position:absolute;inset:0;z-index:45;overflow:hidden;color:#fff;font-family:var(--font,'M PLUS Rounded 1c',sans-serif);user-select:none;-webkit-user-select:none;
+  background:linear-gradient(180deg,#14213D 0,#1C2B4B 100%);opacity:0;animation:ff-in .18s ease-out forwards}
+.ff::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
+  background:repeating-linear-gradient(115deg,transparent 0 46px,rgba(255,255,255,.035) 46px 92px);background-size:200px 100%;animation:ff-stripes calc(1.6s / var(--ff-rate,2)) linear infinite}
+.ff.leaving{opacity:.7;transition:opacity .15s}
+@keyframes ff-in{to{opacity:1}}
+@keyframes ff-stripes{to{background-position:200px 0}}
+
+/* ---- 上段: 早送りバッジ・イニング・対戦 ---- */
+.ff-top{position:absolute;left:0;right:0;top:0;height:92px;display:flex;align-items:center;gap:18px;padding:0 20px;background:rgba(10,18,36,.55);border-bottom:4px solid var(--accent,#FFD54A)}
+.ff-badge{display:flex;align-items:center;gap:10px;height:60px;padding:0 18px;border-radius:14px;background:var(--accent,#FFD54A);color:#1C2B4B;border:4px solid #1C2B4B;box-shadow:0 4px 0 #0A1224;flex:none}
+.ff-badge b{font-size:28px;font-weight:900;letter-spacing:2px}
+.ff-arrows{font-size:26px;letter-spacing:-6px;animation:ff-blink calc(.9s / var(--ff-rate,2)) steps(2) infinite}
+.ff-speed-now{font-size:22px;font-weight:900;background:#1C2B4B;color:var(--accent,#FFD54A);border-radius:999px;padding:2px 12px}
+@keyframes ff-blink{50%{opacity:.35}}
+.ff-inning{display:flex;flex-direction:column;line-height:1.1;flex:none}
+.ff-inning b{font-size:32px;font-weight:900}
+.ff-inning span{font-size:18px;color:#B8C4DB;font-weight:700}
+.ff-matchup{margin-left:auto;display:flex;flex-direction:column;gap:6px;min-width:0}
+.ff-mu{display:flex;align-items:center;gap:10px;font-size:22px;white-space:nowrap;min-width:0}
+.ff-mu b{font-weight:900;overflow:hidden;text-overflow:ellipsis;max-width:300px}
+.ff-sub{color:#B8C4DB;font-size:18px;font-weight:700}
+.ff-tag{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;font-size:18px;font-weight:900;flex:none}
+.ff-tag.p{background:#1E88E5}.ff-tag.b{background:#E5484D}
+.ff-stam{display:inline-block;width:90px;height:12px;border-radius:6px;background:rgba(255,255,255,.18);overflow:hidden;flex:none}
+.ff-stam>i{display:block;height:100%;background:#43A047;transition:width .3s}
+.ff-stam>i.low{background:#E5484D}
+
+/* ---- 中段 ---- */
+.ff-main{position:absolute;left:0;right:0;top:96px;bottom:112px}
+.ff-diamond{position:absolute;left:18px;top:8px;border-radius:22px;overflow:hidden;background:#20406B;border:4px solid #0A1224;box-shadow:inset 0 0 0 3px rgba(255,255,255,.08)}
+.ff-field-svg{position:absolute;left:0;top:0}
+.ff-grass{fill:#3E9142}
+.ff-dirt{fill:#C9955F;opacity:.9}
+.ff-infield{fill:#4CAF50}
+.ff-fence{fill:none;stroke:#FFD54A;stroke-width:5}
+.ff-foul{stroke:#fff;stroke-width:2.5;opacity:.85}
+.ff-mound{fill:#D9A877;stroke:#fff;stroke-width:2}
+.ff-base{fill:#fff;stroke:#1C2B4B;stroke-width:2}
+.ff-traj{fill:none;stroke:#fff;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:2 9;opacity:0}
+.ff-traj.grounder,.ff-traj.liner,.ff-traj.fly,.ff-traj.popup,.ff-traj.hr{opacity:.95}
+.ff-traj.grounder{stroke:#FFF3C4;stroke-dasharray:none;stroke-width:3.5}
+.ff-traj.liner{stroke:#FFE07A;stroke-dasharray:none}
+.ff-traj.fly,.ff-traj.popup{stroke:#fff}
+.ff-traj.hr{stroke:#FF4FA3;stroke-dasharray:none;stroke-width:5}
+.ff-throw{stroke:#FFD54A;stroke-width:4;stroke-dasharray:10 8;opacity:0}
+.ff-throw.show{opacity:1;animation:ff-dash .4s linear infinite}
+@keyframes ff-dash{to{stroke-dashoffset:-18}}
+
+.ff-fielders,.ff-runners{position:absolute;inset:0;pointer-events:none}
+.ff-f{position:absolute;left:0;top:0;width:0;height:0}
+.ff-f>i{position:absolute;left:-11px;top:-11px;width:22px;height:22px;border-radius:50%;background:var(--team,#1E88E5);border:3px solid #fff;box-shadow:0 2px 0 rgba(0,0,0,.35)}
+.ff-f>span{position:absolute;left:0;top:13px;transform:translateX(-50%);font-size:15px;font-weight:900;color:#fff;text-shadow:0 0 3px #0A1224,0 0 3px #0A1224;white-space:nowrap}
+.ff-f.act{z-index:3}
+.ff-f.act>i{background:#FFD54A;border-color:#1C2B4B;transform:scale(1.25)}
+.ff-f.act>span{font-size:18px;background:#1C2B4B;padding:1px 8px;border-radius:999px;text-shadow:none;top:16px}
+.ff-r{position:absolute;left:0;top:0;width:0;height:0;z-index:4}
+.ff-r>i{position:absolute;left:-14px;top:-14px;width:28px;height:28px;border-radius:50%;background:var(--team,#E5484D);border:4px solid #fff;box-shadow:0 3px 0 rgba(0,0,0,.4)}
+.ff-r>span{position:absolute;left:0;bottom:16px;transform:translateX(-50%);font-size:15px;font-weight:900;white-space:nowrap;background:rgba(10,18,36,.82);padding:0 7px;border-radius:999px}
+.ff-r.out>i{background:#757575}
+.ff-r.home>i{background:#FFD54A}
+.ff-ball{position:absolute;left:-8px;top:-8px;width:16px;height:16px;border-radius:50%;background:#fff;border:2px solid #1C2B4B;opacity:0;z-index:5;
+  box-shadow:0 var(--shadow-y,0) 0 -2px rgba(0,0,0,.35)}
+.ff-ball.show{opacity:1}
+
+.ff-callout{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%) scale(.6);font-size:56px;font-weight:900;padding:4px 26px;border-radius:18px;border:5px solid #1C2B4B;
+  background:#fff;color:#1C2B4B;opacity:0;z-index:6;white-space:nowrap;pointer-events:none}
+.ff-callout.show{animation:ff-pop calc(1.2s / var(--ff-rate,2)) ease-out forwards}
+.ff-callout.hit{background:#F57C00;color:#fff}
+.ff-callout.hr{background:#FF4FA3;color:#fff}
+.ff-callout.out{background:#34476E;color:#fff}
+.ff-callout.k{background:#1E88E5;color:#fff}
+.ff-callout.walk{background:#43A047;color:#fff}
+@keyframes ff-pop{0%{opacity:0;transform:translate(-50%,-50%) scale(.6)}18%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}30%{transform:translate(-50%,-50%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-50%) scale(1)}}
+.ff-runs{position:absolute;left:50%;top:78%;transform:translateX(-50%);font-size:44px;font-weight:900;color:#FFD54A;text-shadow:0 3px 0 #1C2B4B,0 0 6px #1C2B4B;opacity:0;z-index:6;pointer-events:none}
+.ff-runs.show{animation:ff-rise calc(1.4s / var(--ff-rate,2)) ease-out forwards}
+@keyframes ff-rise{0%{opacity:0;transform:translate(-50%,20px)}20%{opacity:1;transform:translate(-50%,0)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-14px)}}
+.ff-banner{position:absolute;left:0;right:0;top:14px;display:flex;flex-direction:column;align-items:center;gap:4px;opacity:0;transition:opacity .15s;z-index:7;pointer-events:none}
+.ff-banner.show{opacity:1}
+.ff-banner b{font-size:40px;font-weight:900;background:var(--accent,#FFD54A);color:#1C2B4B;padding:2px 30px;border-radius:14px;border:4px solid #1C2B4B}
+.ff-banner span{font-size:20px;font-weight:800;background:rgba(10,18,36,.85);padding:3px 14px;border-radius:10px;max-width:560px;text-align:center}
+
+/* ---- 右: スコアボード・カウント・実況 ---- */
+.ff-side{position:absolute;left:640px;right:20px;top:8px;bottom:0;display:flex;flex-direction:column;gap:10px}
+.ff-line{width:100%;border-collapse:separate;border-spacing:0;background:#0A1224;border-radius:14px;overflow:hidden;font-size:22px;font-weight:900;text-align:center;table-layout:fixed}
+.ff-line th{width:178px;text-align:left;padding:4px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:20px}
+.ff-line th i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:1px}
+.ff-line td{padding:4px 0;border-left:1px solid rgba(255,255,255,.08)}
+.ff-line thead td{font-size:15px;color:#B8C4DB;padding:3px 0}
+.ff-line td.r{color:var(--accent,#FFD54A);border-left:3px solid rgba(255,255,255,.25)}
+.ff-line td.live{background:rgba(255,213,74,.22)}
+.ff-line.many{font-size:18px}
+.ff-countrow{display:flex;align-items:center;gap:14px;background:rgba(10,18,36,.6);border-radius:14px;padding:8px 14px;min-height:62px}
+.ff-count{display:flex;gap:14px;flex:none}
+.ff-count>div{display:flex;align-items:center;gap:5px}
+.ff-count b{font-size:22px;width:20px}
+.ff-count i{width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,.16);border:2px solid rgba(255,255,255,.25)}
+.ff-count i.on.g{background:#43A047;border-color:#A5D6A7}
+.ff-count i.on.y{background:#FDD835;border-color:#FFF59D}
+.ff-count i.on.r{background:#E5484D;border-color:#FFB3B3}
+.ff-lastpitch{font-size:19px;font-weight:800;color:#DCE6F5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ff-log{flex:1;min-height:0;margin:0;padding:6px 10px;list-style:none;overflow-y:auto;background:rgba(10,18,36,.6);border-radius:14px;scroll-behavior:smooth;-webkit-overflow-scrolling:touch}
+.ff-l{display:flex;align-items:baseline;gap:8px;padding:5px 2px;border-bottom:1px solid rgba(255,255,255,.08);font-size:19px;line-height:1.35;animation:ff-slide .25s ease-out}
+.ff-l em{flex:none;font-style:normal;font-size:14px;font-weight:900;color:#B8C4DB;background:rgba(255,255,255,.1);border-radius:6px;padding:1px 6px}
+.ff-l span{flex:1;font-weight:700}
+.ff-l.hit span,.ff-l.hr span{color:#FFC27A}
+.ff-l.hr span{color:#FF8FC8}
+.ff-l.k span{color:#9CCBFF}
+.ff-l.walk span{color:#A5E3A8}
+.ff-l.sub em{background:#7E57C2;color:#fff}
+.ff-l.sub span{color:#D9C8FF}
+.ff-l-runs{flex:none;font-size:18px;color:#1C2B4B;background:#FFD54A;border-radius:6px;padding:0 6px}
+@keyframes ff-slide{from{opacity:0;transform:translateY(8px)}}
+
+/* ---- 下段: はやさ・ふつうに見る（44 CSS px 以上: ステージ縮小 0.54 でも 64px × 0.54 ≒ 35px → compact で拡大） ---- */
+.ff-bar{position:absolute;left:0;right:0;bottom:0;height:112px;display:flex;align-items:center;gap:16px;padding:0 20px;background:rgba(10,18,36,.7);border-top:4px solid #0A1224}
+.ff-speeds{display:flex;gap:10px}
+.ff-btn{min-width:110px;height:72px;padding:0 22px;border-radius:16px;border:4px solid #1C2B4B;background:#fff;color:#1C2B4B;font-size:28px;font-weight:900;box-shadow:0 5px 0 #0A1224;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.ff-btn.on{background:var(--accent,#FFD54A)}
+.ff-btn:active{transform:translateY(3px);box-shadow:0 2px 0 #0A1224}
+.ff-btn.ff-end{min-width:170px}
+.ff-normal{margin-left:auto;background:#43A047;color:#fff;min-width:250px}
+.ff-hint{font-size:18px;font-weight:800;color:#B8C4DB;white-space:nowrap}
+.ff-hint kbd{display:inline-block;min-width:28px;padding:1px 6px;margin:0 4px 0 10px;border-radius:6px;background:#fff;color:#1C2B4B;font-family:inherit;font-weight:900;text-align:center}
+body.touch .ff-hint{display:none}
+
+/* スマホ横向き（ステージ縮小 < 0.6）: 文字とボタンを大きく */
+body.compact .ff-top{height:100px}
+body.compact .ff-main{top:104px;bottom:130px}
+body.compact .ff-bar{height:130px}
+body.compact .ff-btn{height:96px;min-width:150px;font-size:34px;border-radius:20px}
+body.compact .ff-btn.ff-end{min-width:210px}
+body.compact .ff-normal{min-width:300px}
+body.compact .ff-badge b{font-size:30px}
+body.compact .ff-inning b{font-size:36px}
+body.compact .ff-mu{font-size:26px}
+body.compact .ff-mu b{max-width:270px}
+body.compact .ff-sub{font-size:22px}
+body.compact .ff-l{font-size:24px}
+body.compact .ff-l em{font-size:17px}
+body.compact .ff-line{font-size:24px}
+body.compact .ff-lastpitch{font-size:22px}
+body.compact .ff-diamond{transform:scale(.94);transform-origin:left top}
+
+@media (prefers-reduced-motion: reduce){
+  .ff,.ff::before,.ff-arrows,.ff-l,.ff-throw.show{animation:none}
+  .ff{opacity:1}
+}
