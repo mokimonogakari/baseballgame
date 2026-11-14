@@ -236,6 +236,17 @@ export function createSound({ enabled = true, onVoiceActivity = () => {} } = {})
         tone(t + d, f / 2, len, { type: 'triangle', peak: 0.12, a: 0.008 });
       });
     },
+    // サヨナラの短いジングル（オリジナル。跳ねるリズムで駆け上がり、最後に長い和音）
+    walkoff(t) {
+      const seq = [[523.25, 0, 0.09], [523.25, 0.1, 0.09], [659.25, 0.2, 0.09], [783.99, 0.3, 0.16], [698.46, 0.5, 0.09], [783.99, 0.6, 0.09],
+        [880, 0.7, 0.09], [987.77, 0.8, 0.09], [1046.5, 0.92, 0.9]];
+      seq.forEach(([f, d, len]) => {
+        tone(t + d, f, len, { type: 'square', peak: 0.12, a: 0.006 });
+        tone(t + d, f * 0.75, len, { type: 'triangle', peak: 0.08, a: 0.006 });
+      });
+      [261.63, 329.63, 392].forEach((f) => tone(t + 0.92, f, 1, { type: 'triangle', peak: 0.1, a: 0.02 }));
+      noise(t + 0.9, 0.5, { type: 'highpass', f0: 6000, f1: 3000, peak: 0.12, a: 0.01 });
+    },
     // 出塁の短いファンファーレ
     onbase(t) {
       [[587.33, 0], [739.99, 0.09], [880, 0.18]].forEach(([f, d], i) => tone(t + d, f, i === 2 ? 0.28 : 0.09, { type: 'square', peak: 0.1, a: 0.005 }));

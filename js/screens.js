@@ -226,6 +226,8 @@ const SET_GROUPS = [
     help: { all: '毎回、守備と走者の動きを見せる（タップでスキップ）', big: '長打・走者が動く・際どいプレーだけ見せる', off: '打球が飛ぶところだけ（テンポ重視）' } },
   { tab: 'play', key: 'fastForward', label: '守備オートの見せ方', opts: [['on', '早送り'], ['off', 'ふつう']],
     help: { on: '投球CPU・守備オートのとき、守備の回を早送りで見せる（Zではやく、Escでふつうに）', off: '守備の回も1球ずつふつうに見せる' } },
+  { tab: 'play', key: 'timeOfDay', label: '時間帯', cls: 'seg-3', opts: [['auto', 'おまかせ'], ['day', 'デーゲーム'], ['night', 'ナイター']],
+    help: { auto: '試合の後半に照明が灯ってナイターになる', day: 'ずっと青空の下で', night: '最初から照明の下で' } },
   { tab: 'play', key: 'cursorSpeed', label: 'カーソル速度', cls: 'seg-vol', opts: [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5']],
     help: { 1: 'ゆっくり（正確に動かせる）', 2: 'ややゆっくり', 3: 'ふつう', 4: 'ややはやい', 5: 'とてもはやい' } },
   { tab: 'sound', key: 'sound', label: '効果音', opts: [[true, 'オン'], [false, 'オフ']], help: { true: 'ヒット音や歓声が鳴る', false: '効果音を消す' } },

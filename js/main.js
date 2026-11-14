@@ -114,7 +114,7 @@ setInterval(() => {
 }, 100);
 
 const SETTINGS_KEY = 'dokidoki.settings';
-const DEFAULTS = { innings: 3, difficulty: 'normal', sound: true, music: true, musicVolume: 0.7, cursorSpeed: 3, pitchMode: 'manual', fieldMode: 'assist', watchPlays: 'all', fastForward: 'on', battingAssist: null };
+const DEFAULTS = { innings: 3, difficulty: 'normal', sound: true, music: true, musicVolume: 0.7, cursorSpeed: 3, pitchMode: 'manual', fieldMode: 'assist', watchPlays: 'all', fastForward: 'on', battingAssist: null, timeOfDay: 'auto' };
 function loadSettings() {
   const out = { ...DEFAULTS };
   try {
@@ -129,6 +129,7 @@ function loadSettings() {
     if (['manual', 'assist', 'auto'].includes(o.fieldMode)) out.fieldMode = o.fieldMode;
     if (['all', 'big', 'off'].includes(o.watchPlays)) out.watchPlays = o.watchPlays;
     if (['on', 'off'].includes(o.fastForward)) out.fastForward = o.fastForward;
+    if (['day', 'night', 'auto'].includes(o.timeOfDay)) out.timeOfDay = o.timeOfDay;
     if (o.battingAssist === null || [0, 1, 2, 3].includes(o.battingAssist)) out.battingAssist = o.battingAssist ?? null;
   } catch (e) { /* ignore */ }
   return out;
@@ -143,6 +144,7 @@ function saveSettings(patch) {
   if ('fieldMode' in p && !['manual', 'assist', 'auto'].includes(p.fieldMode)) delete p.fieldMode;
   if ('watchPlays' in p && !['all', 'big', 'off'].includes(p.watchPlays)) delete p.watchPlays;
   if ('fastForward' in p && !['on', 'off'].includes(p.fastForward)) delete p.fastForward;
+  if ('timeOfDay' in p && !['day', 'night', 'auto'].includes(p.timeOfDay)) delete p.timeOfDay;
   if ('battingAssist' in p && !(p.battingAssist === null || [0, 1, 2, 3].includes(p.battingAssist))) delete p.battingAssist;
   Object.assign(settings, p);
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }

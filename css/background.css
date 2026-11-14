@@ -111,11 +111,17 @@ body{
 .stadium .st-frame{fill:#1A2030;stroke:#5A6A86;stroke-width:2}
 .stadium .st-pillar{fill:#2A3346}
 .stadium .sc1{stop-color:#2456A8}.stadium .sc2{stop-color:#13305F}
-.stadium .st-scr-t{fill:#FFD54A;font:900 19px/1 var(--font,sans-serif);letter-spacing:1.5px}
-.stadium .st-scr-s{fill:#fff;font:800 9px/1 var(--font,sans-serif);letter-spacing:4px}
+.stadium .st-scr-t{fill:#FFD54A;font:900 12.5px/1 var(--font,sans-serif);letter-spacing:.5px}
+.stadium .st-scr-s{fill:#fff;font:800 9px/1 var(--font,sans-serif);letter-spacing:1.5px}
+.stadium .st-scr-c{fill:#9BF0A4;font:800 9px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.5px}
 .stadium .st-lscore{fill:#0C111C}
-.stadium .st-ls{fill:#FFE9A8;font:700 9.6px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.6px}
+/* ビジョンのイニング別得点（js/game.js updateBoard が data-sb の文字を書き換える） */
+.stadium .st-ls{fill:#FFE9A8;font:700 8.6px/1 ui-monospace,Menlo,Consolas,monospace}
+.stadium .st-ls.head{fill:#8FB3E8}
+.stadium .st-ls.tn{fill:#fff;font-weight:900}
+.stadium .st-ls.tot{fill:#FF8A8F;font-weight:900}
 .stadium .st-ls.dim{fill:#8FB3E8}
+.stadium .st-ls.now{fill:#fff}
 .stadium .st-ad.a1{fill:#fff}.stadium .st-ad.a2{fill:#FFD54A}
 .stadium .st-adt{fill:#D9363E;font:900 9px/1 var(--font,sans-serif)}.stadium .st-adt.dark{fill:#1C2B4B;font-size:8px}
 /* 照明塔 */

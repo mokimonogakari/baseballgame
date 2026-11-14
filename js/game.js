@@ -104,6 +104,12 @@ const TAKE_GRACE_MS = 150;
 const RESULT_MS = 900;
 const CHANGE_MS = 1200;
 const GAMESET_MS = 1500;
+const INNING_BOARD_MS = 1600;    // 攻守交代のイニング別スコアボード（Z/Enter/タップでスキップ）
+const WALKOFF_MS = 3600;         // サヨナラの演出（Z/Enter/タップでスキップ）
+const SKIP_MIN_MS = 220;         // 結果表示をスキップできるようになるまで（打った直後の連打で飛ばさない）
+const REACT_DELAY_MS = 120;      // 結果 → 打者・投手のリアクション開始（結果スタンプと並行。RESULT_MS 内に収める）
+// 球審のシグナル（クラス sig-*）を見せる時間。声（sound.js の VOICEVOX 音声）と同じ瞬間に出す
+const UMP_MS = { strike: 650, k: 1150, foul: 850, hr: 1800, fair: 700, hbp: 1000, out: 950, safe: 950, play: 1000 };
 const CPU_PITCH_DELAY_MS = 800;  // 打席の準備 → 投球モーション開始（モーション WINDUP_PITCH_MS が続く）
 const BATTER_SCALE = 0.9;
 const BATTER_LEFT_R = 396; // 右打者（三塁側 = 画面左）。transform-origin は左上
@@ -380,8 +386,21 @@ function batterHTML(color, number) {
     + arm('B')
     + P('handF', 'bt-hand bt-hand-f') + P('handB', 'bt-hand bt-hand-b')
     + P('trail', 'bt-trail')
-    + '</div></div>';
+    + '</div><i class="rx-mark" aria-hidden="true"></i></div>';
 }
+
+/*
+ * 球審（オリジナルのちびキャラ。紺の上着・黒い帽子・格子のマスク）。ゾーンの横（打者の反対側）から上半身をのぞかせる。
+ * 腕は上腕（肩が支点）+ 前腕（肘が支点）+ 拳。シグナルは .ump の sig-* クラスで姿勢を決め、キーフレームで出だしを付ける。
+ * .ump-arm-r = 球審の右腕（正面向きなので画面左）
+ */
+const UMP_ARM = (side) => `<i class="ump-arm ump-arm-${side}"><i class="ump-fore"><i class="ump-fist"><i class="ump-finger"></i></i></i></i>`;
+const UMP_HTML = '<div class="ump" data-ref="ump" aria-hidden="true"><div class="ump-rig">'
+  + UMP_ARM('r')
+  + '<i class="ump-body"><i class="ump-pad"></i><i class="ump-tie"></i></i>'
+  + '<i class="ump-head"><i class="ump-face"><i class="ump-eye l"></i><i class="ump-eye r"></i><i class="ump-mouth"></i></i><i class="ump-mask"></i><i class="ump-cap"></i><i class="ump-brim"></i></i>'
+  + UMP_ARM('l')
+  + '<i class="ump-swirl"></i></div></div>';
 
 /** イベントから安打の塁打数を推定（1..3、不明なら 1） */
 function hitBases(event) {
@@ -534,6 +553,10 @@ export function createGameScreen(el, ctx) {
   let fxSkip = null;             // ホームラン演出のスキップ（タップ/Z）
   let pitchInfoTimer = 0;
   let lastResultAt = 0;          // 結果の実況を出した時刻（次の打者紹介を少し待つ）
+  let sbLast = {};               // バックスクリーンのビジョン: 前回書いた文字（変わったときだけ DOM を書き換える）
+  let lastEventSide = null;      // 直前のプレーの攻撃側（サヨナラの判定）
+  let umpTimer = 0;              // 球審のシグナルを戻すタイマー
+  let reactIds = [];             // 打者・投手のリアクションのタイマー
 
   /** サウンド呼び出し（ctx.sound 未定義・未知の名前でも安全） */
   /** タッチ端末（touch.js が body.touch を付ける）。実況のヒントをタッチ向けにする */
@@ -758,8 +781,9 @@ export function createGameScreen(el, ctx) {
     <div class="today"><div class="today-title">本日の成績</div><div class="today-chips" data-ref="b-today"></div></div>
   </aside>
 
-  ${chibiHTML('chibi-pitcher', teamColor('field'), pitcher?.number ?? '', PITCHER_ARMS)}
+  ${chibiHTML('chibi-pitcher', teamColor('field'), pitcher?.number ?? '', PITCHER_ARMS + '<i class="rx-mark" aria-hidden="true"></i>')}
   <div data-ref="batter-wrap">${batterHTML(teamColor('bat'), '')}</div>
+  ${UMP_HTML}
 
   <div class="zone">${cells.join('')}</div>
   <div class="c-mitt" data-ref="mitt" aria-hidden="true"><i class="cm-web"></i><i class="cm-pocket"></i><i class="cm-thumb"></i></div>
@@ -801,6 +825,8 @@ export function createGameScreen(el, ctx) {
     <button type="button" class="btn-z" data-key="z" aria-label="Z"><b>Z</b><small data-ref="z-label">ミート</small></button>
   </div>
 
+  <div class="inning-board" data-ref="board" aria-live="polite"></div>
+  <div class="walkoff" data-ref="walkoff"></div>
   <div class="overlay" data-ref="overlay"><div class="overlay-big" data-ref="overlay-big"></div><div class="overlay-sub" data-ref="overlay-sub"></div></div>
 </div>`;
   }
@@ -883,7 +909,14 @@ export function createGameScreen(el, ctx) {
       pK: q('[data-ref="p-k"]'),
       pR: q('[data-ref="p-r"]'),
       field: q('.game-field'),
+      ump: q('[data-ref="ump"]'),
+      board: q('[data-ref="board"]'),
+      walkoff: q('[data-ref="walkoff"]'),
+      bMark: q('.chibi-batter .rx-mark'),
+      pMark: q('.chibi-pitcher .rx-mark'),
+      sb: Object.fromEntries([...el.querySelectorAll('.game-field [data-sb]')].map((n) => [n.dataset.sb, n])),
     };
+    sbLast = {};
   }
 
   function bindInputs() {
@@ -899,6 +932,7 @@ export function createGameScreen(el, ctx) {
     // マウス: 球種カードのクリック = 決定、コース選び中のクリック = 狙いをその位置へ（タッチは touch.js が扱う）
     on(dom.root, 'pointerdown', (e) => {
       if (e.pointerType !== 'mouse' || e.button !== 0 || destroyed || !state || subsMenu || fieldView) return;
+      if (fxSkip && !e.target.closest?.('button, .panel, .game-header')) { e.preventDefault(); fxSkip(); return; } // 演出・結果表示をクリックでスキップ
       const card = e.target.closest?.('.pitch-dial.show [data-pitch]');
       if (card) { e.preventDefault(); tapPitch(Number(card.dataset.pitch), ''); return; }
       if (e.target.closest?.('button, .panel, .game-header')) return;
@@ -989,6 +1023,7 @@ export function createGameScreen(el, ctx) {
     dom.scoreAway.textContent = sc.away;
     dom.scoreHome.textContent = sc.home;
     dom.inning.textContent = inningLabel();
+    dom.root.classList.toggle('is-night', isNight());
     const b = state.balls ?? 0, s = state.strikes ?? 0, o = state.outs ?? 0;
     dom.lampsB.forEach((l, i) => l.classList.toggle('on-b', i < b));
     dom.lampsS.forEach((l, i) => l.classList.toggle('on-s', i < s));
@@ -1080,8 +1115,11 @@ export function createGameScreen(el, ctx) {
         dom.batterChibi.style.transform = lefty ? `scale(-${BATTER_SCALE}, ${BATTER_SCALE})` : `scale(${BATTER_SCALE})`;
         dom.batterChibi.classList.toggle('lefty', !!lefty);
         if (dom.batterNum) dom.batterNum.textContent = batter.number;
+        // 球審は打者の反対側（右打者ならゾーンの右）からのぞく
+        dom.ump?.classList.toggle('at-l', !!lefty);
       }
     }
+    updateBoard(batter);
 
     // zone / cursor / 投球パネル
     const batting = userBatting();
@@ -1306,7 +1344,8 @@ export function createGameScreen(el, ctx) {
   }
 
   // ---------- overlay ----------
-  function showOverlay(big, sub, ms, then, cls = '') {
+  /** skippable: SKIP_MIN_MS 後から Z / Enter / タップで then へ飛べる（結果・交代のテロップ） */
+  function showOverlay(big, sub, ms, then, cls = '', skippable = false) {
     dom.overlayBig.textContent = big;
     dom.overlaySub.textContent = sub || '';
     dom.overlay.className = `overlay ${cls}`.trim();
@@ -1316,10 +1355,19 @@ export function createGameScreen(el, ctx) {
     const w = dom.overlayBig.scrollWidth, maxW = Math.min(1180, (dom.overlay.clientWidth || 1200) - 20); // 縦向きは表示幅が狭い（css/portrait.css）
     if (w > maxW) dom.overlayBig.style.fontSize = `${Math.floor(parseFloat(getComputedStyle(dom.overlayBig).fontSize) * maxW / w)}px`;
     dom.overlay.classList.add('show');
-    later(() => {
-      dom.overlay.className = `overlay ${cls}`.trim(); // フェードアウト中も色・大きさを保つ
+    let done = false;
+    let id = 0;
+    const finish = (skipped) => {
+      if (done) return;
+      done = true;
+      cancel(id);
+      if (fxSkip === skip) fxSkip = null;
+      dom.overlay.className = skipped ? 'overlay' : `overlay ${cls}`.trim(); // フェードアウト中も色・大きさを保つ
       if (then) then();
-    }, ms);
+    };
+    const skip = () => finish(true);
+    id = later(() => finish(false), ms);
+    if (skippable) later(() => { if (!done && !fxSkip) fxSkip = skip; }, SKIP_MIN_MS);
   }
 
   // ---------- swing animation ----------
@@ -1486,6 +1534,7 @@ export function createGameScreen(el, ctx) {
       else swingPref = 'meet';
     }
     if (steal) clearSteal();
+    clearReactions();
     // 自分で投げない試合形式: 疲れたユーザー投手は自動で交代（CPU と同じ基準）
     if (autoManageUserPitcher()) {
       phase = 'resolve';
@@ -1538,6 +1587,7 @@ export function createGameScreen(el, ctx) {
         if (chip && before) (atBatChips[before.id] ||= []).push(chip);
         if (step.ball && !step.ball.isHomeRun) bumpDebug('inplay');
         if (step.resolves) bumpDebug('resolves');
+        lastEventSide = battingSide(prev);
         state = st;
         logSeen = (st.log || []).length; // 交代は早送りのログに出したので、あとで交代のオーバーレイを出さない
         // 実況（ティッカー）: 打席の結果のときだけ
@@ -2100,6 +2150,7 @@ export function createGameScreen(el, ctx) {
       : ballCenter();
     const stop = contactFeedback(res.event, ball, c.x, c.y);
     batterRunOut();
+    if (!ball?.isFoul) later(() => umpSignal('fair'), 160);
     let line = null;
     try { line = talk.contact(talkCtx({ event: res.event, ball }, prev)); } catch (e) { console.warn(e); }
     tickerText = line || `${batter?.name ?? ''}、${res.event?.bunt ? 'バント！' : '打った！'}`;
@@ -2183,6 +2234,7 @@ export function createGameScreen(el, ctx) {
       ? { x: ZONE_CX + cursor.x * CELL, y: ZONE_CY + cursor.y * CELL }
       : ballCenter();
     contactFeedback(res.event, res.ball, c.x, c.y);
+    if (!res.ball?.isFoul) later(() => { if (phase === 'fielding') umpSignal('fair'); }, 120);
     tickerText = `${batter?.name ?? ''}、${res.event?.bunt ? 'バント！' : '打った！'}`;
     render();
     later(() => openFieldView(prev, res.ball, wasUserBatting, forced), FIELD_OPEN_MS);
@@ -2383,22 +2435,26 @@ export function createGameScreen(el, ctx) {
           ? { x: ZONE_CX + cursor.x * CELL, y: ZONE_CY + cursor.y * CELL }
           : ballCenter();
         const stop = contactFeedback(event, event.ball, c.x, c.y);
-        if (kind === 'foul') later(() => play('foul'), 200);
+        if (kind === 'foul') umpCall('foul', 'foul', 200); // 「ファウルボール！」と同時に両手を上げる
         if (stop) later(() => animateBattedBall(event), stop); else animateBattedBall(event);
       }
       if (kind === 'hr' && fromField) play('homerun');
-      if (OUT_KINDS.includes(kind)) later(() => play('out'), fromField ? 60 : 350);
+      // 本塁での際どいプレーは球審がアウト / セーフを示す（声はアウトのみ。OUT_KINDS は従来どおり「アウト」の声）
+      const hp = fromField ? homePlay(event) : null;
+      if (OUT_KINDS.includes(kind)) umpCall('out', hp, fromField ? 60 : 350);
+      else if (hp) umpCall(hp === 'out' ? 'out' : null, hp, 60);
       if (kind === 'hit' || kind === 'hr' || kind === 'error' || event.runs > 0) later(() => play('cheer'), fromField ? 80 : 300);
       return;
     }
-    if (kind === 'hbp') { mittHide(); play('hbp'); return; }
+    if (kind === 'hbp') { mittHide(); play('hbp'); later(() => umpSignal('hbp'), 240); return; }
     if (kind === 'ibb') { play('ball'); return; }
     play('catch');
     mittPop();
     if (event.swing && wasUserBatting) restartAnim(dom.cursor, 'miss');
+    // 球審: ボールは動かない。ストライクは右拳。見逃し三振は「ストライク」→「バッターアウト！」の声に合わせてパンチアウト
     if (kind === 'ball' || kind === 'walk') play('ball');
-    else if (kind === 'strike') play('strike');
-    else if (kind === 'strikeout') { play('strike'); later(() => play('strikeout'), 300); }
+    else if (kind === 'strike') umpCall('strike', 'strike');
+    else if (kind === 'strikeout') { umpCall('strike', 'strike'); umpCall('strikeout', event.swing ? null : 'k', 300); }
     if (event.runs > 0) later(() => play('cheer'), 300);
   }
 
@@ -2438,10 +2494,12 @@ export function createGameScreen(el, ctx) {
     tickerText = line ? `${fact ? `${fact}　` : ''}${line}` : fact;
     if (event.wildPitch && !/暴投/.test(tickerText)) tickerText += `${tickerText ? '　' : ''}暴投！ランナー進塁`;
     lastResultAt = now();
+    lastEventSide = prevSide;
     const subs = takeNewSubs();
 
     render();
     feedback(event, wasUserBatting, !!opts.fromField);
+    if (event.kind !== 'hr' || opts.fromField) reactTo(event, opts); // 本塁打は homeRunFx の中で
     if (wasUserBatting && ['hit', 'walk', 'hbp', 'ibb', 'error'].includes(event.kind)) later(() => play('onbase'), 420);
     const sub = event.runs ? `${event.runs}点！` : '';
     const big = overlayFor(event);
@@ -2451,11 +2509,12 @@ export function createGameScreen(el, ctx) {
     if (sOk !== null && steal) { showStealRunner(sOk ? 'safe' : 'out'); steal.done = true; dom.stealPrompt?.classList.remove('show'); }
     // 投球結果のあとに盗塁の結果（event.steal）を続けて見せる
     const then = sOk !== null && !STEAL_KINDS.includes(event.kind)
-      ? () => showOverlay(sOk ? '盗塁成功！' : 'アウト！（盗塁失敗）', stealSub(event), RESULT_MS, () => showSubs(subs, afterResult), sOk ? 'is-steal' : 'is-steal-out')
+      ? () => showOverlay(sOk ? '盗塁成功！' : 'アウト！（盗塁失敗）', stealSub(event), RESULT_MS, () => showSubs(subs, afterResult), sOk ? 'is-steal' : 'is-steal-out', true)
       : () => showSubs(subs, afterResult);
     if (sOk !== null) later(() => play(sOk ? 'cheer' : 'out'), 250);
     if (event.kind === 'hr' && !opts.fromField) { homeRunFx(event, sub, then); return; }
-    showOverlay(big, sub || (STEAL_KINDS.includes(event.kind) ? stealSub(event) : ''), ms, then, cls);
+    // サヨナラは結果のスタンプを短くして walkoffFx（afterResult）へ
+    showOverlay(big, sub || (STEAL_KINDS.includes(event.kind) ? stealSub(event) : ''), isWalkoff() ? 600 : ms, then, cls, true);
   }
 
   /** 攻撃側 side から見た点差 */
@@ -2526,6 +2585,7 @@ export function createGameScreen(el, ctx) {
       ids.forEach(cancel);
       root?.classList.remove('hr-cam');
       dom.batterChibi?.classList.remove('bat-flip');
+      clearReactions();
       if (dom.overlay) dom.overlay.className = 'overlay';
       duckMusic(300);
       then();
@@ -2533,7 +2593,15 @@ export function createGameScreen(el, ctx) {
     fxSkip = finish;
     duckMusic(HR_FX_MS + 600);
     play('crowd');
+    // 投手は打球を見上げる・球審は腕を回す・打者はバットを投げて両手を上げる
+    clearReactions();
+    pitcherReact('rx-sky', '', '', 'face-sad');
+    ids.push(later(() => umpSignal('hr'), 250));
     ids.push(later(() => restartAnim(dom.batterChibi, 'bat-flip'), 400));
+    ids.push(later(() => {
+      dom.batterChibi?.classList.add('rx-arms');
+      batterReactPose([pose(0, {}), pose(260, { G: [62, -16], phi: 160, eps: 50, r: 0.6, fe: -1 }), pose(700, { G: [62, -20], phi: 160, eps: 50, r: 0.6, fe: -1 })], false);
+    }, 520));
     ids.push(later(() => { root?.classList.add('hr-cam'); play('fanfare'); }, 700));
     ids.push(later(() => {
       dom.overlayBig.textContent = event.ball && event.ball.isHomeRun === false ? 'ランニングホームラン！' : 'ホームラン！';
@@ -2577,7 +2645,7 @@ export function createGameScreen(el, ctx) {
     tickerText = `${team?.short ? `[${team.short}] ` : ''}${ev.text || label}`;
     render();
     play('select');
-    showOverlay(label, ev.text || '', SUB_OVERLAY_MS, () => showSubs(rest, then), 'is-sub');
+    showOverlay(label, ev.text || '', SUB_OVERLAY_MS, () => showSubs(rest, then), 'is-sub', true);
   }
 
   function afterResult() {
@@ -2585,6 +2653,7 @@ export function createGameScreen(el, ctx) {
     resetBall();
     if (engine.isGameOver(state)) {
       phase = 'over';
+      if (isWalkoff()) { walkoffFx(() => ctx.onGameOver?.(state)); return; }
       play('gameset');
       duckMusic(GAMESET_MS + 400);
       tickerText = '試合終了！';
@@ -2598,14 +2667,313 @@ export function createGameScreen(el, ctx) {
       lastBatting = batting;
       phase = 'change';
       render();
-      const team = state.teams[batting];
-      showOverlay(`${inningLabel()} ${team?.name ?? ''}の攻撃`, '', CHANGE_MS, () => {
+      // イニング別スコアボード（約 1.6 秒、スキップ可）。ナイターの切り替えもこの帯の裏で
+      showInningBoard(() => {
         lastResultAt = 0;
         enterReady();
       });
       return;
     }
     enterReady();
+  }
+
+  // ---------- 昼 / ナイター ----------
+  /** 設定 timeOfDay: 'day' | 'night' | 'auto'（既定。試合の後半から照明が灯る: 9回制は5回、6回制は4回、3回制は2回から） */
+  function isNight() {
+    const mode = ctx.settings?.timeOfDay;
+    if (mode === 'night') return true;
+    if (mode === 'day') return false;
+    const n = Number(state?.innings) || Number(ctx.settings?.innings) || 9;
+    return (Number(state?.inning) || 1) >= Math.max(2, Math.ceil((n * 5) / 9));
+  }
+
+  // ---------- バックスクリーンのビジョン（js/stadium.js の data-sb の文字だけ書き換える） ----------
+  function updateBoard(batter) {
+    const sb = dom.sb;
+    if (!sb || !state) return;
+    const set = (k, v, cls) => {
+      const n = sb[k];
+      if (!n) return;
+      const t = String(v);
+      if (sbLast[k] !== t) { sbLast[k] = t; n.textContent = t; }
+      if (cls !== undefined && sbLast[`c:${k}`] !== cls) { sbLast[`c:${k}`] = cls; n.setAttribute('class', cls); }
+    };
+    const sc = state.score || {};
+    const away = sc.away || [], home = sc.home || [];
+    const inn = Number(state.inning) || 1;
+    const over = engine.isGameOver(state);
+    const first = Math.max(0, Math.max(inn, away.length) - 9); // 延長は直近 9 回
+    for (let i = 0; i < 9; i++) {
+      const k = first + i;
+      const nowA = !over && k === inn - 1 && state.half === 'top';
+      const nowH = !over && k === inn - 1 && state.half === 'bottom';
+      set(`n${i}`, k + 1);
+      set(`a${i}`, away[k] ?? '', nowA ? 'st-ls now' : 'st-ls');
+      set(`h${i}`, home[k] ?? (over && away[k] !== undefined ? 'X' : ''), nowH ? 'st-ls now' : 'st-ls');
+    }
+    const t = scores();
+    set('aR', t.away);
+    set('hR', t.home);
+    set('at', (state.teams.away.short || state.teams.away.name || 'A').slice(0, 1));
+    set('ht', (state.teams.home.short || state.teams.home.name || 'H').slice(0, 1));
+    const nm = String(batter?.name || '');
+    set('name', nm.length > 7 ? `${nm.slice(0, 6)}…` : nm);
+    set('inn', inningLabel());
+    set('cnt', over ? 'GAME SET' : `B${state.balls ?? 0} S${state.strikes ?? 0} O${state.outs ?? 0}`);
+  }
+
+  // ---------- 球審のシグナル ----------
+  /** kind: strike | k（見逃し三振のパンチアウト）| foul | hr | fair | hbp | out | safe | play。ボールは動かない（実際の球審と同じ） */
+  function umpSignal(kind) {
+    const n = dom.ump;
+    if (!n || !kind) return;
+    clearTimeout(umpTimer);
+    [...n.classList].filter((c) => c.startsWith('sig-')).forEach((c) => n.classList.remove(c));
+    void n.offsetWidth; // 同じシグナルの連続でも頭から
+    n.classList.add(`sig-${kind}`);
+    n.dataset.sig = kind; // 検証用（最後に出したシグナル）
+    umpTimer = setTimeout(() => { umpTimer = 0; n.classList.remove(`sig-${kind}`); }, UMP_MS[kind] || 800);
+  }
+  /** 球審の声（voice: sound.js の名前）とシグナルを同じ瞬間に */
+  function umpCall(voice, sig, delay = 0) {
+    const go = () => { if (voice) play(voice); if (sig) umpSignal(sig); };
+    if (delay > 0) later(go, delay); else go();
+  }
+  /** 本塁での際どいプレー（送球が本塁へ、走者の到達と送球の差が小さい）→ 'out' | 'safe' | null */
+  function homePlay(event) {
+    if (Number(event?.throwTo) !== 4 || !Array.isArray(event.runnerResults)) return null;
+    const ta = Number(event.throwArrive);
+    const close = (r) => !Number.isFinite(ta) || !Number.isFinite(Number(r.arrive)) || Math.abs(Number(r.arrive) - ta) < 0.6;
+    const outR = event.runnerResults.find((r) => r.out && r.from >= 1);
+    if (outR && close(outR)) return 'out';
+    const safeR = event.runnerResults.find((r) => r.to === 4 && r.from >= 1);
+    if (safeR && close(safeR)) return 'safe';
+    return null;
+  }
+
+  // ---------- 打席結果のあとのリアクション（打者・投手）。結果スタンプと並行、RESULT_MS 内 ----------
+  const BX_CLASSES = ['rx-kswing', 'rx-look', 'rx-pump', 'rx-arms', 'rx-hbp'];
+  const PX_CLASSES = ['rx-fist', 'rx-sky', 'rx-slump', 'rx-bow', 'rx-cap', 'face-happy', 'face-sad'];
+  function clearReactions() {
+    reactIds.forEach(cancel);
+    reactIds = [];
+    dom.batterChibi?.classList.remove(...BX_CLASSES);
+    dom.pitcherChibi?.classList.remove(...PX_CLASSES);
+    dom.batterWrap?.classList.remove('jog-out');
+    [dom.bMark, dom.pMark].forEach((m) => { if (m) { m.className = 'rx-mark'; m.textContent = ''; } });
+  }
+  const reactLater = (fn, ms) => { reactIds.push(later(fn, ms)); };
+  /** 吹き出しの記号（「？」「！」など。独自の短い文字） */
+  function rxMark(node, text, kind) {
+    if (!node || !text) return;
+    node.textContent = text;
+    node.className = `rx-mark mk-${kind}`;
+    restartAnim(node, 'show');
+  }
+  /** 打者のパーツへリアクションの姿勢を再生（スイング中でも上書き。withBat=false ならバットは動かさない＝落とした・投げた後） */
+  function batterReactPose(keys, withBat = true) {
+    const n = dom.batterChibi;
+    if (!n || typeof n.animate !== 'function' || reduceMotion()) return;
+    swingAnims.forEach((a) => { try { a.cancel(); } catch (e) { /* ignore */ } });
+    swingAnims = [];
+    n.classList.remove('swing-meet', 'swing-power');
+    cancelLoad();
+    const sw = buildSwing(keys);
+    n.querySelectorAll('[data-bt]').forEach((part) => {
+      const k = part.dataset.bt;
+      if (!withBat && (k === 'batw' || k === 'bat' || k === 'trail')) return;
+      const frames = sw.frames[k];
+      if (frames) loadAnims.push(part.animate(frames, { duration: sw.dur, easing: 'ease-out', fill: 'forwards' }));
+    });
+  }
+  function pitcherReact(cls, mark, markKind, face) {
+    const p = dom.pitcherChibi;
+    if (!p) return;
+    p.classList.remove('windup', 'follow', ...PX_CLASSES);
+    void p.offsetWidth;
+    cls.split(' ').filter(Boolean).forEach((c) => p.classList.add(c));
+    if (face) p.classList.add(face);
+    if (mark) rxMark(dom.pMark, mark, markKind || 'info');
+  }
+  /** 安打: バットを置いて走り出し、走りながら拳を突き上げる（alreadyRunning = 試合画面の打球でもう走り出している） */
+  function batterPumpRun(alreadyRunning) {
+    const n = dom.batterChibi, w = dom.batterWrap;
+    if (!n || !w) return;
+    n.classList.add('rx-pump');
+    rxMark(dom.bMark, '！', 'good');
+    if (reduceMotion()) return;
+    if (!alreadyRunning) { restartAnim(n, 'drop-bat'); restartAnim(w, 'run-out'); }
+    const up = (t, y) => pose(t, { G: [72, y], phi: 160, eps: 50, r: 0.7, fe: -1 });
+    batterReactPose([pose(0, {}), up(140, 36), up(280, -2), up(420, 30), up(560, -4)], false);
+  }
+  /**
+   * 結果ごとのリアクション表（docs/research/PAWAPURO-PRESENTATION.md P1-2）
+   * 空振り三振: 打者はよろけてうなだれる・投手は拳 / 見逃し三振: 打者は球審を振り返る・投手は拳
+   * 安打: 打者は走りながら拳を突き上げる・投手は帽子に手をやってうつむく / 本塁打: homeRunFx（バット投げ → 両手を上げる、投手は打球を見上げる）
+   * 四球: 打者はバットを置いて一塁へ・投手は天を仰ぐ / 死球: 打者は痛がって一塁へ・投手は帽子を取って頭を下げる
+   */
+  function reactTo(event, opts = {}) {
+    clearReactions();
+    const k = event.kind;
+    const n = dom.batterChibi;
+    if (k === 'strikeout') {
+      pitcherReact('rx-fist', '！', 'good', 'face-happy');
+      if (event.swing) {
+        // スイングを振り切ってから（スイング 350〜420ms）よろけてうなだれる
+        reactLater(() => {
+          n?.classList.add('rx-kswing');
+          rxMark(dom.bMark, 'がくっ', 'sad');
+          batterReactPose([pose(0, {}), pose(150, { G: [86, 104], phi: 290, eps: -50, r: 0.55, tilt: 9, ff: [-7, -2], bk: 8, heel: 6 }),
+            pose(480, { G: [88, 112], phi: 296, eps: -62, r: 0.5, tilt: 11, ff: [-7, -2], bk: 8, heel: 4 })]);
+        }, 300);
+      } else {
+        reactLater(() => {
+          n?.classList.add('rx-look');
+          rxMark(dom.bMark, '？', 'info');
+          batterReactPose([pose(0, {}), pose(180, { G: [112, 60], phi: 150, eps: 34, r: -0.22, tilt: -3 }), pose(600, { G: [112, 62], phi: 150, eps: 30, r: -0.22, tilt: -3 })]);
+        }, REACT_DELAY_MS);
+      }
+      return;
+    }
+    if (k === 'hit' || (k === 'hr' && opts.fromField)) {
+      pitcherReact(k === 'hr' ? 'rx-slump' : 'rx-cap', k === 'hr' ? '…' : '', 'sad', 'face-sad');
+      // 自動守備（試合画面で打球を見せた）ならもう走り出している → 拳だけ
+      const running = !!dom.batterWrap?.classList.contains('run-out');
+      reactLater(() => batterPumpRun(running), REACT_DELAY_MS);
+      return;
+    }
+    if (k === 'walk' || k === 'ibb') {
+      pitcherReact('rx-sky', '', '', 'face-sad');
+      reactLater(() => {
+        rxMark(dom.bMark, '♪', 'good');
+        if (reduceMotion()) return;
+        restartAnim(n, 'drop-bat');
+        restartAnim(dom.batterWrap, 'jog-out');
+      }, REACT_DELAY_MS + 80);
+      return;
+    }
+    if (k === 'hbp') {
+      pitcherReact('rx-bow', '', '', '');
+      reactLater(() => {
+        n?.classList.add('rx-hbp');
+        rxMark(dom.bMark, 'いてて', 'sad');
+        if (reduceMotion()) return;
+        restartAnim(n, 'drop-bat');
+        restartAnim(dom.batterWrap, 'jog-out');
+      }, REACT_DELAY_MS + 120);
+      return;
+    }
+    if (OUT_KINDS.includes(k) && k !== 'caught_stealing') pitcherReact('', '', '', 'face-happy');
+  }
+
+  // ---------- 攻守交代: イニング別スコアボード ----------
+  function boardHTML() {
+    const sc = state.score || {};
+    const away = sc.away || [], home = sc.home || [];
+    const n = Math.max(Number(state.innings) || 9, away.length, home.length);
+    // 終わった半イニング（今が裏なら同じ回の表、今が表なら前の回の裏）
+    const endInn = state.half === 'bottom' ? state.inning : state.inning - 1;
+    const endHalf = state.half === 'bottom' ? 'top' : 'bottom';
+    const cols = Array.from({ length: n }, (_, i) => i);
+    const t = scores();
+    const row = (side, arr) => {
+      const team = state.teams[side];
+      const cells = cols.map((i) => {
+        const v = arr[i];
+        const just = i === endInn - 1 && side === (endHalf === 'top' ? 'away' : 'home');
+        return `<span class="${just ? 'just' : ''}${just && Number(v) > 0 ? ' scored' : ''}">${v ?? ''}</span>`;
+      }).join('');
+      return `<div class="ib-row"><span class="ib-team"><i style="background:${esc(team.color)}">${esc(team.short || '')}</i><em>${esc(team.name)}</em></span>${cells}`
+        + `<b>${t[side] ?? 0}</b><b>${state.hits?.[side] ?? 0}</b><b>${state.errors?.[side] ?? 0}</b></div>`;
+    };
+    const side = battingSide();
+    const next = state.teams[side];
+    const nb = engine.getBatter(state);
+    let order = '';
+    try { const v = nb ? engine.lineupView(state, side).find((l) => l.id === nb.id) : null; if (v) order = `${v.slot + 1}番 ${nb.name}から`; } catch (e) { /* ignore */ }
+    return `<div class="ib-card" style="--cols:${n}">`
+      + `<div class="ib-title"><b>${endInn}回${endHalf === 'top' ? '表' : '裏'}</b> 終了</div>`
+      + `<div class="ib-grid"><div class="ib-row head"><span class="ib-team"></span>${cols.map((i) => `<span>${i + 1}</span>`).join('')}<b>R</b><b>H</b><b>E</b></div>`
+      + `${row('away', away)}${row('home', home)}</div>`
+      + `<div class="ib-next">${esc(inningLabel())} <b>${esc(next?.name ?? '')}</b>の攻撃${order ? `<small>${esc(order)}</small>` : ''}</div></div>`;
+  }
+  /** 攻守交代のスコアボード帯（約 1.6 秒、Z/Enter/タップでスキップ） */
+  function showInningBoard(then) {
+    const b = dom.board;
+    if (!b) { showOverlay(`${inningLabel()} の攻撃`, '', CHANGE_MS, then); return; }
+    if (dom.overlay) dom.overlay.className = 'overlay';
+    clearReactions();
+    resetBatterMotion(); // 次の攻撃側の打者に変わっているので、前の打者のリアクションを消す
+    b.innerHTML = boardHTML();
+    restartAnim(b, 'show');
+    play('select');
+    let done = false;
+    let id = 0;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      cancel(id);
+      if (fxSkip === finish) fxSkip = null;
+      b.classList.remove('show');
+      then();
+    };
+    id = later(finish, INNING_BOARD_MS);
+    later(() => { if (!done && !fxSkip) fxSkip = finish; }, 120);
+  }
+
+  // ---------- サヨナラ ----------
+  /** 最後のプレーが裏の攻撃で、後攻が勝って試合が終わった */
+  function isWalkoff() {
+    const t = scores();
+    return engine.isGameOver(state) && lastEventSide === 'home' && Number(t.home) > Number(t.away);
+  }
+  /**
+   * サヨナラの演出（約 3.6 秒、Z/Enter/タップでスキップ）: 「サヨナラ！」の帯 → 勝ったチームの選手がベンチから本塁へ駆け寄って跳ねる
+   * → 独自の短いジングル → 小さく GAME SET → then（結果画面へ）
+   */
+  function walkoffFx(then) {
+    const wrap = dom.walkoff;
+    const t = scores();
+    const winSide = Number(t.home) > Number(t.away) ? 'home' : 'away';
+    const team = state.teams[winSide] || {};
+    const userWon = winSide === userSide();
+    if (!wrap) { then(); return; }
+    let nums = [];
+    try { nums = engine.lineupView(state, winSide).map((l) => l.player?.number ?? '').slice(0, 8); } catch (e) { /* ignore */ }
+    while (nums.length < 8) nums.push('');
+    // 本塁（x≈640, y≈600）のまわりに集まる。左右（両ベンチの方向）から交互に駆け寄る
+    const spots = [[560, 470, -1], [720, 476, 1], [470, 500, -1], [810, 504, 1], [640, 440, -1], [380, 530, -1], [900, 536, 1], [640, 516, 1]];
+    const mates = spots.map(([x, y, from], i) => `<div class="wo-mate" style="left:${x}px;top:${y}px;--from:${from * (760 + i * 40)}px;--d:${(0.07 * i).toFixed(2)}s;--hop:${(0.42 + (i % 3) * 0.05).toFixed(2)}s">`
+      + chibiHTML('wo-chibi', team.color || '#E5484D', nums[i]) + '</div>').join('');
+    const COLORS = ['#FFD54A', '#FF4FA3', '#7FD1FF', '#9BF0A4', '#fff', team.color || '#E5484D'];
+    const conf = Array.from({ length: 24 }, (_, i) => `<i style="left:${4 + ((i * 37) % 92)}%;background:${esc(COLORS[i % COLORS.length])};--d:${((i % 8) * 0.12).toFixed(2)}s;--r:${(i * 47) % 360}deg"></i>`).join('');
+    const sa = esc(state.teams.away.short || state.teams.away.name), sh = esc(state.teams.home.short || state.teams.home.name);
+    wrap.innerHTML = `<div class="wo-shade"></div><div class="wo-mates">${mates}</div><div class="wo-conf">${conf}</div>`
+      + `<div class="wo-banner"><b>サヨナラ！</b><span>${userWon ? 'サヨナラ勝ち！' : `${esc(team.name || '')}のサヨナラ勝ち`}</span></div>`
+      + `<div class="wo-gameset">GAME SET　${sa} ${t.away} - ${t.home} ${sh}</div>`;
+    if (dom.overlay) dom.overlay.className = 'overlay';
+    resetBall();
+    clearReactions();
+    try { ctx.music?.stop?.(300); } catch (e) { /* ignore */ }
+    tickerText = userWon ? 'サヨナラ勝ち！ 劇的な幕切れ！' : `${team.name || ''}、サヨナラ勝ち…`;
+    render();
+    restartAnim(wrap, 'show');
+    play('crowd');
+    const ids = [];
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      ids.forEach(cancel);
+      if (fxSkip === finish) fxSkip = null;
+      then();
+    };
+    ids.push(later(() => wrap.classList.add('rush'), 300));
+    ids.push(later(() => play('walkoff'), 700));
+    ids.push(later(() => play('cheer'), 1400));
+    ids.push(later(() => wrap.classList.add('end'), 2600));
+    ids.push(later(finish, WALKOFF_MS));
+    ids.push(later(() => { if (!done) fxSkip = finish; }, 250));
   }
 
   // ---------- 采配（選手交代） ----------
@@ -3034,6 +3402,7 @@ export function createGameScreen(el, ctx) {
     chanceOn = false;
     chanceShownFor = '';
     fxSkip = null;
+    lastEventSide = null;
     el.innerHTML = template();
     cacheDom();
     bindInputs();
@@ -3045,7 +3414,8 @@ export function createGameScreen(el, ctx) {
     showOverlay(`${inningLabel()} ${state.teams[lastBatting]?.name ?? ''}の攻撃`, 'プレイボール！', CHANGE_MS, () => {
       lastResultAt = 0;
       enterReady();
-    });
+    }, '', true);
+    later(() => umpSignal('play'), 350); // 球審が投手を指して「プレイ」
   }
 
   function destroy() {
@@ -3060,6 +3430,7 @@ export function createGameScreen(el, ctx) {
     hitRaf = 0;
     clearTimers();
     clearTimeout(swingTimer);
+    clearTimeout(umpTimer);
     swingAnims.forEach((a) => { try { a.cancel(); } catch (e) { /* ignore */ } });
     swingAnims = [];
     if (duckTimer) { clearTimeout(duckTimer); duckTimer = 0; try { ctx.music?.duck?.(false); } catch (e) { /* ignore */ } }

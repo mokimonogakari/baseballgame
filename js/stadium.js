@@ -121,16 +121,23 @@ function build() {
   o.push(`<polygon class="st-backscreen" points="${poly([...bsBase, ...bsTop.reverse()])}"/>`);
   // ビジョン（画面座標で直接）
   const VB = { x: 532, y: 84, w: 216, h: 58 };
+  // 左の画面 = 打者名・回・カウント、右の画面 = イニング別得点（試合中は game.js が data-sb の文字だけ書き換える）
+  const LX = VB.x + 5, LW = 84, RX = LX + LW + 4, RW = VB.w - 10 - LW - 4;
+  const lsCol = (i) => r1(RX + 15 + i * 9.6);
+  const lsRow = (y, key, init) => Array.from({ length: 9 }, (_, i) => `<text class="st-ls${key === 'n' ? ' head' : ''}" data-sb="${key}${i}" x="${lsCol(i)}" y="${y}" text-anchor="middle">${init(i)}</text>`).join('');
   o.push(`<g class="st-board">`
     + `<rect class="st-pillar" x="566" y="${VB.y + VB.h}" width="10" height="20"/><rect class="st-pillar" x="704" y="${VB.y + VB.h}" width="10" height="20"/>`
     + rect(VB.x, VB.y, VB.w, VB.h, 'st-frame', ' rx="3"')
-    + rect(VB.x + 5, VB.y + 5, 128, VB.h - 10, 'st-screen', ' fill="url(#@@st-screen)"')
-    + `<text class="st-scr-t" x="${VB.x + 69}" y="${VB.y + 29}" text-anchor="middle">DOKIDOKI</text>`
-    + `<text class="st-scr-s" x="${VB.x + 69}" y="${VB.y + 43}" text-anchor="middle">BALLPARK</text>`
-    + rect(VB.x + 138, VB.y + 5, 73, VB.h - 10, 'st-lscore')
-    + `<text class="st-ls" x="${VB.x + 142}" y="${VB.y + 18}">123456789</text>`
-    + `<text class="st-ls dim" x="${VB.x + 142}" y="${VB.y + 31}">000000000</text>`
-    + `<text class="st-ls dim" x="${VB.x + 142}" y="${VB.y + 44}">00000000-</text>`
+    + rect(LX, VB.y + 5, LW, VB.h - 10, 'st-screen', ' fill="url(#@@st-screen)"')
+    + `<text class="st-scr-t" data-sb="name" x="${LX + LW / 2}" y="${VB.y + 22}" text-anchor="middle">DOKIDOKI</text>`
+    + `<text class="st-scr-s" data-sb="inn" x="${LX + LW / 2}" y="${VB.y + 35}" text-anchor="middle">BALLPARK</text>`
+    + `<text class="st-scr-c" data-sb="cnt" x="${LX + LW / 2}" y="${VB.y + 47}" text-anchor="middle"></text>`
+    + rect(RX, VB.y + 5, RW, VB.h - 10, 'st-lscore')
+    + lsRow(VB.y + 15, 'n', (i) => i + 1) + `<text class="st-ls head" x="${r1(RX + RW - 7)}" y="${VB.y + 15}" text-anchor="middle">R</text>`
+    + `<text class="st-ls tn" data-sb="at" x="${r1(RX + 5)}" y="${VB.y + 28}" text-anchor="middle">A</text>`
+    + lsRow(VB.y + 28, 'a', () => '0') + `<text class="st-ls tot" data-sb="aR" x="${r1(RX + RW - 7)}" y="${VB.y + 28}" text-anchor="middle">0</text>`
+    + `<text class="st-ls tn" data-sb="ht" x="${r1(RX + 5)}" y="${VB.y + 41}" text-anchor="middle">H</text>`
+    + lsRow(VB.y + 41, 'h', () => '') + `<text class="st-ls tot" data-sb="hR" x="${r1(RX + RW - 7)}" y="${VB.y + 41}" text-anchor="middle">0</text>`
     + `</g>`);
   // ビジョン脇のスポンサー板
   o.push(`<g class="st-ads">${rect(452, 124, 74, 14, 'st-ad a1', ' rx="2"')}<text x="489" y="134.5" text-anchor="middle" class="st-adt">ドキドキ食堂</text>`
