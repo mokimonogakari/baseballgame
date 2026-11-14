@@ -3008,9 +3008,12 @@ export function createGameScreen(el, ctx) {
     const st = ctx.settings || {};
     const innings = [3, 6, 9].includes(Number(st.innings)) ? Number(st.innings) : 9;
     diff = DIFFICULTY[st.difficulty] || DIFFICULTY.normal;
-    state = engine.createGame(cpuTeam, userTeam, { innings, userSide: 'away', rng: Math.random }); // rng: 調子を試合ごとに変える
+    const userHome = ctx.userHome === true; // ペナントのホームゲーム（js/season.js）は後攻
+    state = userHome
+      ? engine.createGame(userTeam, cpuTeam, { innings, userSide: 'home', rng: Math.random })
+      : engine.createGame(cpuTeam, userTeam, { innings, userSide: 'away', rng: Math.random }); // rng: 調子を試合ごとに変える
     if (!state) throw new Error('game.js: engine.createGame が GameState を返しませんでした');
-    if (!state.userSide) state = { ...state, userSide: 'away' };
+    if (!state.userSide) state = { ...state, userSide: userHome ? 'home' : 'away' };
     // 自分で投げない試合形式: ユーザー側の継投（スタミナ切れ・終盤の抑え）もエンジンの CPU 采配に任せる
     state = { ...state, autoUserPitcher: true }; // 継投（スタミナ切れ・終盤の抑え）はエンジンの CPU 采配に任せる（さいはいで手動交代も可）
     logSeen = (state.log || []).length;

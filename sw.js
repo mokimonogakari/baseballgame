@@ -18,6 +18,7 @@ const SHELL = [
   'css/style.css', 'css/background.css', 'css/settings.css', 'css/fielding.css', 'css/subs.css', 'css/teamedit.css', 'css/mobile.css', 'css/title.css', 'css/portrait.css', 'css/fastforward.css',
   'js/main.js', 'js/touch.js', 'js/portrait.js', 'js/stadium.js', 'js/fastforward.js', 'js/title.js', 'js/data.js', 'js/engine.js', 'js/cost.js', 'js/game.js', 'js/fielding.js', 'js/subs.js',
   'js/screens.js', 'js/teamedit.js', 'js/sound.js', 'js/music.js',
+  'js/lineup.js', 'js/pregame.js', 'js/season.js', 'js/season-model.js', 'css/season.css',
   'assets/icon.svg', 'assets/icon-192.png', 'assets/icon-512.png', 'assets/icon-maskable-512.png', 'assets/apple-touch-icon.png',
   ...['ball', 'foul', 'out', 'out2', 'strike', 'strike2', 'strikeout'].flatMap((n) => [`assets/voice/${n}.mp3`, `assets/voice/${n}.ogg`]),
 ];

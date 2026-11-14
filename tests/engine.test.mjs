@@ -184,3 +184,4 @@ import './challenge.test.mjs';
 import './power.test.mjs';
 import './contact.test.mjs';
 import './fastforward.test.mjs';
+import './season.test.mjs';

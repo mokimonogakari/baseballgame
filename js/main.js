@@ -9,6 +9,8 @@ import { createSound } from './sound.js';
 import { createMusic } from './music.js';
 import { createPortraitHud } from './portrait.js';
 import { initTouch, canFullscreen, isFullscreenOrStandalone, enterFullscreen } from './touch.js';
+import { renderPregame, exhibitionOptions, exhibitionTeam } from './pregame.js';
+import { renderSeason } from './season.js';
 
 const stage = document.getElementById('stage');
 const wrap = document.getElementById('stage-wrap');
@@ -19,6 +21,8 @@ let userTeamId = 'red';
 let current = null;
 let gameScreen = null;
 let editScreen = null;
+/** 試合前・ペナント画面のコントローラ { handleKey(key, e), destroy() } */
+let screenCtl = null;
 let myTeam = loadMyTeam();
 let opponentTeamId = null;
 let oppModal = null;
@@ -242,19 +246,28 @@ function gameCtx() {
   // 相手: 前に選んだチーム、無ければ一覧で自分の次のチーム（赤 → 青）
   const next = teams.length > 1 ? teams[(ui + 1) % teams.length] : null;
   const opp = teams.find((t) => t.id === opponentTeamId && t.id !== user.id) || (next && next.id !== user.id ? next : teams.find((t) => t.id !== user.id));
-  return { ...ctx, teams: [user, opp], userTeamId: user.id, opponentTeamId: opp?.id ?? null };
+  return { ...ctx, teams: [exhibitionTeam(user), opp], userTeamId: user.id, opponentTeamId: opp?.id ?? null };
+}
+/** ペナントの試合: { user, opp, userHome, quitTo, onGameOver(state) }（チームは試合前画面のオーダー・疲労を反映済み） */
+function matchCtx(m) {
+  return {
+    ...ctx, teams: [m.user, m.opp], userTeamId: m.user.id, opponentTeamId: m.opp.id, userHome: !!m.userHome,
+    go: (name, payload) => go(name === 'title' && m.quitTo ? m.quitTo : name, payload),
+    onGameOver: (state) => m.onGameOver(state),
+  };
 }
 
 function go(name, payload) {
   if (OPPONENT_PICKER && name === 'game' && !(payload && payload.confirmed)) { openOppModal(); return; }
   closeOppModal();
   if (editScreen) { try { editScreen.destroy(); } catch (e) { console.error(e); } editScreen = null; }
+  if (screenCtl) { try { screenCtl.destroy(); } catch (e) { console.error(e); } screenCtl = null; }
   if (gameScreen) { try { gameScreen.destroy(); } catch (e) { console.error(e); } gameScreen = null; }
   current = name;
   document.body.dataset.screen = name;
   try {
     if (name === 'title') music.play('title');
-    else if (name === 'team' || name === 'teamedit') music.play('title');
+    else if (name === 'team' || name === 'teamedit' || name === 'pregame' || name === 'season') music.play('title');
     else if (name === 'settings') music.play('settings');
     else if (name === 'game') music.play('game');
     else if (name === 'result') {
@@ -275,8 +288,10 @@ function go(name, payload) {
   else if (name === 'team') renderTeam(el, ctx);
   else if (name === 'settings') renderSettings(el, ctx);
   else if (name === 'teamedit') editScreen = renderTeamEdit(el, ctx);
+  else if (name === 'pregame') screenCtl = renderPregame(el, ctx, payload && payload.team ? payload : exhibitionOptions(ctx));
+  else if (name === 'season') screenCtl = renderSeason(el, ctx, payload || {});
   else if (name === 'game') {
-    gameScreen = createGameScreen(el, gameCtx());
+    gameScreen = createGameScreen(el, payload && payload.match ? matchCtx(payload.match) : gameCtx());
     gameScreen.start();
   } else if (name === 'result') renderResult(el, ctx, boxScore(payload), payload);
   hud.sync();
@@ -327,8 +342,9 @@ window.addEventListener('keydown', (e) => {
   if (!key) return;
   if (current === 'title') {
     if (isGuideOpen()) { if (key === 'enter' || key === 'esc' || key === 'z' || key === 'x') { e.preventDefault(); closeGuide(); } }
-    else if (key === 'enter' && !(e.target.closest && e.target.closest('button'))) go('game');
+    else if (key === 'enter' && !(e.target.closest && e.target.closest('button'))) go('pregame');
   }
+  else if (current === 'pregame' || current === 'season') { if (screenCtl) screenCtl.handleKey(key, e); }
   else if (current === 'team' || current === 'settings') { if (key === 'esc') go('title'); }
   else if (current === 'teamedit') { if (editScreen) { if (e.key.startsWith('Arrow') || e.key === ' ') e.preventDefault(); editScreen.handleKey(key); } }
   else if (current === 'game') {

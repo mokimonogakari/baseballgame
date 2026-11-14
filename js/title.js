@@ -1,5 +1,6 @@
 import { chibiHTML } from './screens.js';
 import { stadiumSVG } from './stadium.js';
+import { seasonSummary } from './season-model.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SEEN_KEY = 'dokidoki.guideSeen';
@@ -82,6 +83,15 @@ export function openGuide(host, { first = false } = {}) {
 }
 
 /* ---------- タイトル ---------- */
+/** ペナントの入口（進行中なら「つづきから」と成績） */
+function pennantButton() {
+  let sum = null;
+  try { sum = seasonSummary(); } catch (e) { sum = null; }
+  if (!sum) return '<button type="button" class="tt-pennant" data-act="season"><b>ペナント</b><small>シーズンを戦う</small></button>';
+  const rec = `${sum.w}勝${sum.l}敗${sum.t ? `${sum.t}分` : ''}`;
+  return `<button type="button" class="tt-pennant cont" data-act="season" aria-label="ペナント つづきから ${esc(sum.team.name)} ${rec}">
+    <b>ペナント</b><small>${sum.done ? 'シーズン終了' : `つづき ${sum.played}/${sum.length}`}</small><small class="rec"><span class="mchip-s" style="--c:${esc(sum.team.color)}">${esc(sum.team.short)}</span>${rec}</small></button>`;
+}
 export function renderTitle(el, ctx) {
   openOverlay = null;
   const { user, opp } = ctx.matchup();
@@ -103,7 +113,10 @@ export function renderTitle(el, ctx) {
         <span class="tt-side">${opp ? chip(opp) : ''}<span class="tt-who"><small>あいて</small><span class="tt-name">${esc(opp ? opp.name : '')}</span></span></span>
       </button>
       <div class="tt-rules" aria-label="いまのルール">${chips}</div>
-      <button type="button" class="tt-play" data-act="game"><span>試合をはじめる</span><i>▶</i></button>
+      <div class="tt-playrow">
+        <button type="button" class="tt-play" data-act="game"><span>試合をはじめる</span><i>▶</i></button>
+        ${pennantButton()}
+      </div>
       <div class="tt-grid">
         <button type="button" class="tt-sub" data-act="challenge"><b>⚾ 10球チャレンジ</b><small>すぐ遊べる打撃ゲーム</small></button>
         <button type="button" class="tt-sub" data-act="team"><b>チーム・選手</b><small>能力を見る</small></button>
@@ -116,7 +129,8 @@ export function renderTitle(el, ctx) {
     <div class="footer"><span>GitHub Pages で配信 ・ 球審ボイス VOICEVOX:青山龍星</span><span>v0.4</span></div>
   </div>`;
   const on = (act, fn) => el.querySelectorAll(`[data-act="${act}"]`).forEach((b) => (b.onclick = fn));
-  on('game', () => ctx.go('game'));
+  on('game', () => ctx.go('pregame'));
+  on('season', () => ctx.go('season'));
   on('challenge', () => ctx.openChallenge());
   on('team', () => ctx.go('team'));
   on('teamedit', () => ctx.go('teamedit'));
